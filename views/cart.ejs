@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Bag | FullStack Cafe</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .cart-item-row { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .cart-item-row.removing { 
+            opacity: 0; 
+            transform: translateX(30px); 
+            height: 0; 
+            padding-top: 0; 
+            padding-bottom: 0; 
+            overflow: hidden; 
+        }
+    </style>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans antialiased">
+    <%- include('partials/header') %>
+
+    <main class="max-w-4xl mx-auto px-4 py-12">
+        <h1 class="text-4xl font-black mb-8 tracking-tighter text-slate-900 uppercase">Shopping Bag</h1>
+
+        <div id="cart-container">
+            <% if (cart && cart.items && cart.items.length > 0) { %>
+                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
+                    <div class="divide-y divide-gray-100" id="cart-items-list">
+                        <% cart.items.forEach(item => { %>
+                            <% if (item.productId) { %>
+                            <div class="p-8 flex flex-col md:flex-row items-center gap-8 cart-item-row" id="item-<%= item.productId._id %>">
+                                <div class="relative group">
+                                    <img src="<%= item.productId.image %>" class="w-24 h-24 object-cover rounded-[1.5rem] shadow-md group-hover:scale-105 transition-transform" onerror="this.src='https://placehold.co/100x100?text=Food'">
+                                </div>
+
+                                <div class="flex-grow text-center md:text-left">
+                                    <h3 class="font-black text-slate-800 text-xl"><%= item.productId.name %></h3>
+                                    <p class="text-slate-400 text-sm font-medium"><%= item.productId.category || 'Cafe Special' %></p>
+                                    <p class="text-slate-900 font-black mt-1">₹<span class="unit-price"><%= item.productId.price %></span></p>
+                                </div>
+
+                                <div class="flex items-center bg-slate-50 rounded-2xl px-5 py-2 border border-slate-100">
+                                    <button onclick="updateQuantity('<%= item.productId._id %>', -1)" class="w-10 h-10 flex items-center justify-center font-black text-slate-400 hover:text-slate-900 transition-colors text-xl">-</button>
+                                    <span id="qty-<%= item.productId._id %>" class="w-10 text-center font-black text-slate-800"><%= item.quantity %></span>
+                                    <button onclick="updateQuantity('<%= item.productId._id %>', 1)" class="w-10 h-10 flex items-center justify-center font-black text-slate-400 hover:text-slate-900 transition-colors text-xl">+</button>
+                                </div>
+
+                                <button onclick="removeItem('<%= item.productId._id %>')" class="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <% } %>
+                        <% }) %>
+                    </div>
+
+                    <div class="p-10 bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-center gap-8">
+                        <div class="text-center sm:text-left">
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Total Payable</p>
+                            <p class="text-4xl font-black">
+                                ₹<span id="cart-total"><%= cart.items.reduce((total, item) => total + (item.productId ? item.productId.price * item.quantity : 0), 0) %></span>
+                            </p>
+                        </div>
+                        
+                        <button onclick="processCheckout()" class="w-full sm:w-auto px-16 py-5 bg-white text-slate-900 font-black uppercase tracking-widest rounded-[1.5rem] hover:bg-slate-100 shadow-2xl active:scale-95 transition-all">
+                            Place Order
+                        </button>
+                    </div>
+                </div>
+            <% } else { %>
+                <div class="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200 shadow-inner">
+                    <div class="text-8xl mb-8 animate-bounce">☕</div>
+                    <h2 class="text-3xl font-black text-slate-800">Your bag is empty!</h2>
+                    <p class="text-slate-400 mt-3 mb-10 font-medium text-lg">Looks like you haven't added any fuel yet.</p>
+                    <a href="/products" class="px-12 py-4 bg-slate-900 text-white font-black rounded-2xl hover:shadow-2xl hover:-translate-y-1 transition-all inline-block uppercase tracking-widest text-sm">
+                        Explore Menu
+                    </a>
+                </div>
+            <% } %>
+        </div>
+    </main>
+
+    <%- include('partials/footer') %>
+
+    <script>
+    // 1. Logic to update Total Price in UI without refresh
+    function updateCartTotalUI() {
+        let total = 0;
+        const items = document.querySelectorAll('.cart-item-row:not(.removing)');
+        
+        items.forEach(item => {
+            const price = parseFloat(item.querySelector('.unit-price').innerText);
+            const qtyElement = item.querySelector('[id^="qty-"]');
+            if (qtyElement) {
+                const quantity = parseInt(qtyElement.innerText);
+                total += price * quantity;
+            }
+        });
+
+        document.getElementById('cart-total').innerText = total;
+
+        // If no items are left, reload once to show the "Empty Bag" design
+        if (items.length === 0) {
+            setTimeout(() => location.reload(), 400);
+        }
+    }
+
+    // 2. AJAX: Update Quantity (+ or -)
+    async function updateQuantity(productId, change) {
+        try {
+            const response = await fetch('/cart/update-quantity', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ productId, change })
+            });
+            const data = await response.json();
+            
+            if (data.success) { 
+                const qtySpan = document.getElementById(`qty-${productId}`);
+                let currentQty = parseInt(qtySpan.innerText);
+                let newQty = currentQty + change;
+
+                if (newQty > 0) {
+                    qtySpan.innerText = newQty;
+                    updateCartTotalUI();
+                } else {
+                    // If user clicks '-' and quantity becomes 0, remove the item
+                    removeItemFromUI(productId);
+                }
+                
+                // Update global header badge if it exists
+                const badge = document.getElementById('cart-count-badge');
+                if(badge && data.cartCount !== undefined) {
+                    badge.innerText = data.cartCount;
+                }
+            }
+        } catch (err) { 
+            console.error("Update Error:", err); 
+        }
+    }
+
+    // 3. AJAX: Remove Item (Delete icon)
+    async function removeItem(productId) {
+        if(!confirm("Remove this item from your bag?")) return;
+        try {
+            const response = await fetch(`/cart/remove/${productId}`, { 
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            const data = await response.json();
+            if (data.success || response.ok) { 
+                removeItemFromUI(productId);
+                
+                const badge = document.getElementById('cart-count-badge');
+                if(badge && data.cartCount !== undefined) {
+                    badge.innerText = data.cartCount;
+                    if(data.cartCount === 0) badge.classList.add('hidden');
+                }
+            }
+        } catch (err) { 
+            console.error("Delete Error:", err); 
+        }
+    }
+
+    // 4. Helper: Smooth UI Removal
+    function removeItemFromUI(productId) {
+        const itemRow = document.getElementById(`item-${productId}`);
+        if (itemRow) {
+            itemRow.classList.add('removing');
+            setTimeout(() => {
+                itemRow.remove();
+                updateCartTotalUI();
+            }, 300); // Matches the CSS transition time
+        }
+    }
+
+    // 5. AJAX: Checkout
+    async function processCheckout() {
+        try {
+            const response = await fetch('/orders/checkout', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            });
+            
+            const data = await response.json();
+            if (data.success) {
+                alert("Order placed successfully! ☕");
+                window.location.href = '/orders/my-orders'; 
+            } else {
+                alert(data.message || "Checkout failed.");
+            }
+        } catch (err) {
+            console.error("Checkout Error:", err);
+            alert("Connection error. Try again.");
+        }
+    }
+    </script>
+</body>
+</html>

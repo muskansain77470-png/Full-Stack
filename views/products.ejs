@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/icons/favicon.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Menu | Full Stack Cafe</title>
+    <style>
+        :root {
+            --bg-main: #f8fafc;
+            --text-main: #334155;
+            --charcoal: #1e293b;
+        }
+
+        @layer utilities {
+            .scrollbar-hide::-webkit-scrollbar { display: none; }
+            .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        }
+
+        body { background-color: var(--bg-main); color: var(--text-main); }
+
+        .product-card {
+            background: white;
+            border: 1px solid #f1f5f9;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .product-card:hover:not(.out-of-stock) {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+            border-color: #e2e8f0;
+        }
+
+        .out-of-stock {
+            filter: grayscale(0.4);
+            opacity: 0.8;
+        }
+
+        @keyframes pulse-cart {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.4); background-color: #0f172a; }
+            100% { transform: scale(1); }
+        }
+        .cart-animate { animation: pulse-cart 0.5s ease-in-out; }
+
+        .pagination-bar {
+            background: white;
+            padding: 0.75rem 1.5rem;
+            border-radius: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
+            border: 1px solid #f1f5f9;
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .page-nav-btn {
+            padding: 0.5rem;
+            border-radius: 0.75rem;
+            transition: all 0.2s;
+            color: #1e293b;
+        }
+
+        .page-nav-btn:hover:not(:disabled) {
+            background-color: #f1f5f9;
+        }
+
+        .page-nav-btn:disabled {
+            opacity: 0.25;
+            cursor: not-allowed;
+        }
+    </style>
+</head>
+<body class="font-sans antialiased">
+    <%- include('partials/header') %>
+
+    <script>
+        const currentUserRole = "<%= user ? user.role : 'guest' %>";
+    </script>
+
+    <header class="bg-[#F8FAFC] py-16 md:py-20 text-center border-b border-blue-50">
+        <div class="max-w-7xl mx-auto px-4">
+            <h2 class="text-5xl md:text-7xl font-black tracking-tighter text-[#1E293B] mb-2 uppercase">
+                Full Stack <span class="text-slate-400">Cafe</span>
+            </h2>
+            <div class="flex items-center justify-center gap-3">
+                <span class="h-px w-8 bg-slate-200"></span>
+                <p id="items-count-display" class="text-[#94A3B8] text-[10px] font-bold tracking-[0.2em] uppercase">
+                    Loading Menu...
+                </p>
+                <span class="h-px w-8 bg-slate-200"></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-20">
+        <div class="bg-white p-4 md:p-6 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 mb-12 flex flex-col gap-6">
+            
+            <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                    <% ['all', 'Junk', 'Drink', 'Desert'].forEach(cat => { %>
+                    <button data-category="<%= cat %>" class="category-btn whitespace-nowrap px-6 py-2.5 rounded-2xl font-bold text-sm transition-all active:scale-95 <%= cat === 'all' ? 'bg-slate-800 text-white shadow-lg' : 'bg-slate-50 text-slate-500 hover:bg-slate-100' %>">
+                        <%= cat === 'all' ? 'Everything' : cat %>
+                    </button>
+                    <% }) %>
+                </div>
+
+                <div class="relative w-full lg:w-96 group">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    </span>
+                    <input type="text" id="search-input" placeholder="Find your fuel..." class="w-full pl-12 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:ring-4 focus:ring-slate-500/10 focus:border-slate-400 focus:outline-none focus:bg-white transition-all text-sm font-medium" />
+                </div>
+            </div>
+
+            <div class="flex flex-wrap items-center gap-4 pt-4 border-t border-slate-50">
+                <div class="flex items-center gap-2">
+                    <label class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Availability:</label>
+                    <select id="availability-filter" onchange="handleFilterChange()" class="bg-slate-50 border-none text-xs font-bold rounded-xl px-4 py-2 focus:ring-2 focus:ring-slate-200 outline-none cursor-pointer">
+                        <option value="all">All Items</option>
+                        <option value="inStock">In Stock Only</option>
+                    </select>
+                </div>
+
+                <div class="flex items-center gap-2">
+                    <label class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Sort By:</label>
+                    <select id="sort-filter" onchange="handleFilterChange()" class="bg-slate-50 border-none text-xs font-bold rounded-xl px-4 py-2 focus:ring-2 focus:ring-slate-200 outline-none cursor-pointer">
+                        <option value="latest">Newest First</option>
+                        <option value="priceLow">Price: Low to High</option>
+                        <option value="priceHigh">Price: High to Low</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 min-h-[400px]"></div>
+        <div id="pagination-controls" class="flex justify-center items-center mt-16 mb-20"></div>
+    </main>
+
+    <div id="product-modal" class="fixed inset-0 z-[100] hidden items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md transition-all duration-300">
+        <div class="bg-white w-full max-w-4xl rounded-[2.5rem] overflow-hidden shadow-2xl border border-white/20">
+            <div class="relative flex flex-col md:flex-row">
+                <button onclick="closeModal()" class="absolute top-6 right-6 z-20 bg-white/90 rounded-full p-2 hover:bg-slate-100 shadow-sm transition-colors">
+                    <svg class="w-6 h-6 text-slate-800" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M6 18L18 6M6 6l12 12" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </button>
+                <div class="md:w-1/2">
+                    <img id="modal-img" src="" class="w-full h-full object-cover min-h-[400px]" />
+                </div>
+                <div class="p-10 md:w-1/2 flex flex-col justify-center bg-white">
+                    <span id="modal-category" class="text-[10px] font-black uppercase tracking-[0.2em] text-slate-500 bg-slate-100 px-4 py-1.5 rounded-full w-fit">Category</span>
+                    <h2 id="modal-name" class="text-4xl font-black text-slate-900 mt-6 leading-tight">Name</h2>
+                    <p id="modal-desc" class="text-slate-500 mt-6 leading-relaxed font-medium">Description</p>
+                    <div class="mt-10 flex items-center justify-between bg-slate-50 p-6 rounded-3xl border border-slate-100">
+                        <span id="modal-price" class="text-3xl font-black text-slate-900">₹0</span>
+                        <div id="modal-action-container"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <%- include('partials/footer') %>
+
+    <script>
+        const state = { 
+            category: "all", 
+            page: 1, 
+            search: "", 
+            availability: "all",
+            sort: "latest",
+            isLoading: false 
+        };
+
+        function getImagePath(imgName) {
+            if (!imgName) return 'https://placehold.co/400x300?text=No+Image';
+            return imgName.startsWith('http') || imgName.startsWith('/') ? imgName : `/images/${imgName}`;
+        }
+
+        async function addToCart(event, productId, productName) {
+            if (event) { event.preventDefault(); event.stopPropagation(); }
+            if (currentUserRole === 'admin') return alert("🚫 Admins cannot place orders.");
+            if (currentUserRole === 'guest') return window.location.href = "/login";
+
+            try {
+                const response = await fetch('/cart/add', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                    body: JSON.stringify({ productId })
+                });
+
+                const data = await response.json();
+                if (data.success) {
+                    const cartBadge = document.getElementById('cart-count-badge');
+                    if (cartBadge) {
+                        cartBadge.innerText = data.cartCount;
+                        cartBadge.classList.remove('hidden');
+                        cartBadge.classList.add('flex', 'cart-animate');
+                        setTimeout(() => cartBadge.classList.remove('cart-animate'), 500);
+                    }
+                } else {
+                    alert(data.message || "Could not add to cart");
+                }
+            } catch (err) { console.error("Cart error:", err); }
+        }
+
+        function renderProducts(products) {
+            const grid = document.getElementById("product-grid");
+            if (!products || products.length === 0) {
+                grid.innerHTML = `<div class="col-span-full text-center py-20 text-slate-400 font-bold">No items found matching your filters.</div>`;
+                return;
+            }
+
+            grid.innerHTML = products.map((product) => {
+                const safeName = product.name.replace(/'/g, "\\'");
+                const safeDesc = product.description ? product.description.replace(/'/g, "\\'") : "Freshly prepared for you.";
+                const stockVal = product.stock ?? 0;
+                const isOutOfStock = stockVal <= 0;
+                const isLowStock = stockVal > 0 && stockVal < 10;
+                const finalImgPath = getImagePath(product.image);
+
+                let actionBtn;
+                if (currentUserRole === 'admin') {
+                    actionBtn = `<div class="text-center py-3 px-4 bg-slate-100 rounded-xl text-slate-500 text-[10px] font-bold uppercase tracking-widest">MANAGEMENT MODE</div>`;
+                } else if (isOutOfStock) {
+                    actionBtn = `<button disabled class="w-full bg-slate-200 text-slate-400 py-3.5 rounded-xl font-bold cursor-not-allowed">Out of Stock</button>`;
+                } else {
+                    actionBtn = `<button onclick="addToCart(event, '${product._id}', '${safeName}')" class="w-full bg-slate-900 text-white py-3.5 rounded-xl font-bold hover:bg-slate-700 transition-all active:scale-95 shadow-lg">Add to Bag</button>`;
+                }
+
+                return `
+                <div class="product-card group rounded-[2rem] overflow-hidden ${isOutOfStock ? 'out-of-stock' : ''}">
+                    <div class="relative aspect-[4/3] overflow-hidden cursor-pointer" onclick="openModal('${product._id}', '${safeName}', ${product.price}, '${product.image}', '${safeDesc}', '${product.category}', ${stockVal})">
+                        <img src="${finalImgPath}" class="w-full h-full object-cover ${!isOutOfStock ? 'group-hover:scale-110' : ''} transition-transform duration-700" loading="lazy" />
+                        ${isOutOfStock ? `
+                            <div class="absolute inset-0 bg-slate-900/20 backdrop-blur-[1px] flex items-center justify-center">
+                                <span class="bg-white/90 text-slate-900 px-4 py-1.5 rounded-xl text-xs font-black uppercase tracking-tighter shadow-xl">Sold Out</span>
+                            </div>
+                        ` : ''}
+                        ${isLowStock && currentUserRole !== 'admin' ? `
+                            <div class="absolute top-4 left-4 bg-orange-500 text-white px-3 py-1 rounded-lg text-[10px] font-black uppercase animate-pulse shadow-lg">Low Stock</div>
+                        ` : ''}
+                        <div class="absolute top-4 right-4 bg-white/90 backdrop-blur px-4 py-1.5 rounded-xl text-xs font-black text-slate-900 shadow-sm">₹${product.price}</div>
+                    </div>
+                    <div class="p-6">
+                        <div class="flex justify-between items-start mb-1">
+                            <h3 class="text-lg font-black text-slate-800 truncate flex-1">${product.name}</h3>
+                            <span class="text-[9px] font-black px-2 py-0.5 rounded-md uppercase tracking-widest ${isOutOfStock ? 'bg-red-50 text-red-400' : 'bg-emerald-50 text-emerald-500'}">
+                                ${isOutOfStock ? 'Empty' : 'In Stock'}
+                            </span>
+                        </div>
+                        <p class="text-slate-400 text-[10px] font-bold mb-4 uppercase tracking-tight">
+                            Status: <span class="${isOutOfStock ? 'text-red-400' : isLowStock ? 'text-orange-500' : 'text-slate-600'}">
+                                ${isOutOfStock ? 'None Left' : stockVal + ' Units'}
+                            </span>
+                        </p>
+                        ${actionBtn}
+                    </div>
+                </div>`;
+            }).join("");
+        }
+
+        async function fetchMenu() {
+            const grid = document.getElementById("product-grid");
+            const countDisplay = document.getElementById("items-count-display");
+            grid.innerHTML = `<div class="col-span-full flex justify-center py-20"><div class="w-10 h-10 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div></div>`;
+            
+            try {
+                const params = new URLSearchParams({ 
+                    category: state.category, 
+                    page: state.page, 
+                    limit: 8, 
+                    search: state.search,
+                    availability: state.availability,
+                    sort: state.sort
+                });
+                
+                const response = await fetch(`/products/api?${params}`);
+                const data = await response.json();
+                
+                renderProducts(data.products);
+                renderPagination(data.totalPages, data.currentPage);
+                countDisplay.innerText = `${data.totalItems} Items Found`;
+            } catch (err) {
+                console.error(err);
+                grid.innerHTML = `<div class="col-span-full text-center py-10"><p class="text-red-500 font-bold">Menu is currently unavailable.</p></div>`;
+            }
+        }
+
+        function handleFilterChange() {
+            state.availability = document.getElementById("availability-filter").value;
+            state.sort = document.getElementById("sort-filter").value;
+            state.page = 1;
+            fetchMenu();
+        }
+
+        function renderPagination(totalPages, activePage) {
+            const container = document.getElementById("pagination-controls");
+            container.innerHTML = "";
+            if (totalPages <= 1) return;
+
+            const bar = document.createElement("div");
+            bar.className = "pagination-bar";
+            bar.innerHTML = `
+                <button onclick="changePage(${activePage - 1})" ${activePage === 1 ? 'disabled' : ''} class="page-nav-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+                </button>
+                <span class="font-black text-slate-800 tracking-widest text-sm">
+                    ${activePage} <span class="text-slate-300 mx-2">/</span> ${totalPages}
+                </span>
+                <button onclick="changePage(${activePage + 1})" ${activePage === totalPages ? 'disabled' : ''} class="page-nav-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                </button>
+            `;
+            container.appendChild(bar);
+        }
+
+        function changePage(page) { 
+            if (page < 1) return;
+            state.page = page; 
+            window.scrollTo({ top: 300, behavior: "smooth" }); 
+            fetchMenu(); 
+        }
+
+        let searchTimer;
+        document.getElementById("search-input").addEventListener("input", (e) => {
+            clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => { state.search = e.target.value; state.page = 1; fetchMenu(); }, 400);
+        });
+
+        document.querySelectorAll(".category-btn").forEach((btn) => {
+            btn.addEventListener("click", () => {
+                document.querySelectorAll(".category-btn").forEach(b => {
+                    b.className = "category-btn whitespace-nowrap px-6 py-2.5 rounded-2xl font-bold text-sm bg-slate-50 text-slate-500 hover:bg-slate-100 transition-all";
+                });
+                btn.className = "category-btn whitespace-nowrap px-6 py-2.5 rounded-2xl font-bold text-sm bg-slate-800 text-white shadow-lg transition-all";
+                state.category = btn.getAttribute("data-category");
+                state.page = 1;
+                fetchMenu();
+            });
+        });
+
+        function openModal(id, name, price, img, desc, category, stock) {
+            const stockVal = parseInt(stock) || 0;
+            document.getElementById("modal-img").src = getImagePath(img);
+            document.getElementById("modal-name").innerText = name;
+            document.getElementById("modal-desc").innerText = desc || "Standard product details.";
+            document.getElementById("modal-price").innerText = `₹${price}`;
+            document.getElementById("modal-category").innerText = category;
+            
+            const container = document.getElementById("modal-action-container");
+            
+            if (currentUserRole === 'admin') {
+                container.innerHTML = `
+                    <div class="flex flex-col items-end">
+                        <span class="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Current Inventory</span>
+                        <span class="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl font-bold text-lg border border-blue-100">
+                            ${stockVal} Units
+                        </span>
+                    </div>`;
+            } else if (stockVal <= 0) {
+                container.innerHTML = `<button disabled class="bg-slate-100 text-slate-400 px-10 py-4 rounded-2xl font-bold cursor-not-allowed">Sold Out</button>`;
+            } else {
+                let stockLabel = "";
+                if (stockVal < 10) {
+                    stockLabel = `<p class="text-orange-500 text-[10px] font-black uppercase mb-2 animate-pulse">🔥 Only ${stockVal} left!</p>`;
+                } else {
+                    stockLabel = `<p class="text-emerald-500 text-[10px] font-black uppercase mb-2">✅ ${stockVal} available</p>`;
+                }
+
+                container.innerHTML = `
+                    <div class="flex flex-col items-end">
+                        ${stockLabel}
+                        <button onclick="addToCart(event, '${id}', '${name.replace(/'/g, "\\'")}')" class="bg-slate-900 text-white px-10 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-lg active:scale-95">Add to Bag</button>
+                    </div>`;
+            }
+            document.getElementById("product-modal").classList.replace("hidden", "flex");
+            document.body.style.overflow = "hidden";
+        }
+
+        function closeModal() {
+            document.getElementById("product-modal").classList.replace("flex", "hidden");
+            document.body.style.overflow = "auto";
+        }
+
+        document.addEventListener("DOMContentLoaded", fetchMenu);
+    </script>
+</body>
+</html>

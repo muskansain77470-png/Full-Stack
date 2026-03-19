@@ -1,0 +1,191 @@
+/* --------------------- General Body --------------------- */
+body {
+  /* Soft Off-White/Ivory Background - Clean and modern */
+  background-color: #f8fafc; 
+  font-family: 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  margin: 0;
+  padding: 0;
+  color: #334155; /* Slate-700 */
+}
+
+/* --------------------- Navbar --------------------- */
+.navbar {
+  /* Light Creamy Background with Glassmorphism */
+  background-color: #ffffff;
+  padding: 1.25rem 2.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.navbar-brand {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #1e293b; /* Charcoal */
+  letter-spacing: -0.025em;
+}
+
+.navbar a {
+  color: #64748b; /* Slate-500 */
+  text-decoration: none;
+  margin-left: 1.5rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.navbar a:hover {
+  color: #0f172a; /* Slate-900 */
+}
+
+/* --------------------- Buttons --------------------- */
+.btn {
+  display: inline-block;
+  font-weight: 600;
+  text-align: center;
+  cursor: pointer;
+  border: none;
+  outline: none;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  font-size: 0.875rem;
+}
+
+.btn-primary {
+  /* Deep Charcoal/Slate */
+  background-color: #1e293b;
+  color: white;
+  padding: 0.6rem 1.5rem;
+  border-radius: 0.75rem; /* More rounded */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+.btn-primary:hover {
+  background-color: #334155;
+  transform: translateY(-1px);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-secondary {
+  background-color: #f1f5f9; /* Slate-100 */
+  color: #475569; /* Slate-600 */
+  padding: 0.6rem 1.5rem;
+  border-radius: 0.75rem;
+}
+
+.btn-secondary:hover {
+  background-color: #e2e8f0;
+}
+
+/* --------------------- Forms --------------------- */
+input, select, textarea {
+  padding: 0.75rem 1rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 0.75rem;
+  font-size: 0.95rem;
+  width: 100%;
+  margin-bottom: 1.25rem;
+  background-color: #ffffff;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  box-sizing: border-box;
+}
+
+input:focus, select:focus, textarea:focus {
+  border-color: #94a3b8;
+  outline: none;
+  box-shadow: 0 0 0 4px rgba(203, 213, 225, 0.3);
+}
+
+/* --------------------- Tables --------------------- */
+table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  margin-bottom: 1.5rem;
+  background: white;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+th, td {
+  border-bottom: 1px solid #f1f5f9;
+  padding: 1rem 1.25rem;
+  text-align: left;
+}
+
+th {
+  background-color: #f8fafc;
+  font-weight: 700;
+  color: #475569;
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+/* --------------------- Cards --------------------- */
+.card {
+  background-color: white;
+  border-radius: 1rem;
+  border: 1px solid #f1f5f9;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  transition: all 0.3s ease;
+}
+
+.card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.05);
+}
+
+/* --------------------- Footer --------------------- */
+.footer {
+  background-color: #ffffff;
+  color: #64748b;
+  padding: 3rem 2rem;
+  text-align: center;
+  font-size: 0.85rem;
+  border-top: 1px solid #f1f5f9;
+}
+
+.footer a {
+  color: #1e293b;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+/* --------------------- Alerts --------------------- */
+.alert {
+  padding: 1rem 1.25rem;
+  border-radius: 0.75rem;
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+}
+
+.alert-success {
+  background-color: #f0fdf4;
+  color: #166534;
+  border-color: #bbf7d0;
+}
+
+.alert-error {
+  background-color: #fef2f2;
+  color: #991b1b;
+  border-color: #fecaca;
+}
+
+/* --------------------- Responsive --------------------- */
+@media screen and (max-width: 768px) {
+  .navbar {
+    padding: 1rem;
+  }
+  .navbar a {
+    margin-left: 0.75rem;
+    font-size: 0.8rem;
+  }
+}

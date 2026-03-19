@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Support Help Center</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+</head>
+<body class="bg-gray-50 text-gray-900 font-sans antialiased">
+    <%- include('partials/header') %>
+
+    <main class="max-w-5xl mx-auto px-4 py-16">
+        <div class="text-center mb-16">
+            <h1 class="text-4xl font-black mb-4 tracking-tight">How can we help?</h1>
+            <p class="text-gray-500 text-lg">Our team usually responds within 2-4 business hours.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <div class="space-y-6">
+                <div class="bg-white p-6 rounded-3xl shadow-sm border border-gray-100">
+                    <h3 class="font-bold text-gray-400 text-xs uppercase tracking-widest mb-4">Quick Contact</h3>
+                    <div class="space-y-4">
+                        <div class="flex items-center gap-4">
+                            <div class="w-10 h-10 bg-red-50 text-red-600 flex items-center justify-center rounded-xl font-bold">✉️</div>
+                            <div>
+                                <p class="text-xs text-gray-400 font-bold uppercase">Email us</p>
+                                <p class="text-sm font-bold text-gray-700">support@yourstore.com</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="md:col-span-2">
+                <div class="bg-white p-8 rounded-3xl shadow-sm border border-gray-100">
+                    <form id="supportForm" class="space-y-6">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div>
+                                <label class="block text-xs font-black uppercase text-gray-400 mb-2">Full Name</label>
+                                <input type="text" name="name" required placeholder="John Doe" class="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 transition" />
+                            </div>
+                            <div>
+                                <label class="block text-xs font-black uppercase text-gray-400 mb-2">Order ID (Optional)</label>
+                                <input type="text" name="orderId" placeholder="#ABC12345" class="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 transition uppercase font-mono" />
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black uppercase text-gray-400 mb-2">Subject</label>
+                            <select name="subject" class="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 transition">
+                                <option value="tracking">Order Tracking</option>
+                                <option value="refund">Returns & Refunds</option>
+                                <option value="payment">Payment Issues</option>
+                                <option value="other">Other</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-black uppercase text-gray-400 mb-2">Describe issue</label>
+                            <textarea name="message" rows="5" required placeholder="Tell us more..." class="w-full px-4 py-3 bg-gray-50 border border-gray-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-red-500 transition"></textarea>
+                        </div>
+                        <button type="submit" id="submitBtn" class="w-full py-4 bg-red-700 text-white font-black uppercase tracking-widest rounded-xl hover:bg-red-800 transition-all shadow-lg active:scale-95">
+                            Send Message
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <%- include('partials/footer') %>
+
+    <script>
+        const form = document.getElementById("supportForm");
+        const btn = document.getElementById("submitBtn");
+
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            btn.disabled = true;
+            btn.innerText = "Sending...";
+
+            const formData = {
+                name: form.name.value,
+                orderId: form.orderId.value,
+                subject: form.subject.value,
+                message: form.message.value
+            };
+
+            try {
+                // Ensure the path starts with /
+                const response = await fetch('/support/api/send', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(formData)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    alert('✅ ' + data.message);
+                    form.reset();
+                } else {
+                    alert('❌ Error: ' + data.message);
+                }
+            } catch (err) {
+                console.error("Fetch Error:", err);
+                alert('❌ Connection failed. Check your server console.');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "Send Message";
+            }
+        };
+    </script>
+</body>
+</html>

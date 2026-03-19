@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/png" href="/icons/favicon.png" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Full Stack Café</title>
+  </head>
+  <body>
+    <%- include('partials/header') %>
+    <main
+      class="flex-grow flex items-center justify-center py-16 px-4 bg-gray-50"
+    >
+      <div class="max-w-md w-full text-center">
+        <div class="relative inline-block mb-6">
+          <div
+            class="absolute inset-0 bg-red-100 rounded-full animate-ping opacity-25"
+          ></div>
+          <div
+            class="relative bg-white p-6 rounded-full shadow-sm border border-red-100"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-16 w-16 text-red-500"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="1.5"
+                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
+              />
+            </svg>
+          </div>
+        </div>
+
+        <h1 class="text-3xl font-extrabold text-gray-900 tracking-tight mb-3">
+          Entry Forbidden
+        </h1>
+        <p class="text-lg text-gray-600 mb-8 leading-relaxed">
+          Oops! It looks like you don't have the clearance to view this section.
+          This area is reserved for
+          <span class="font-semibold text-gray-800">Canteen Admin & Staff</span>
+          only.
+        </p>
+
+        <div class="flex flex-col sm:flex-row gap-3 justify-center">
+          <a
+            href="/menu"
+            class="px-8 py-3 bg-red-500 hover:bg-red-600 text-white font-bold rounded-xl shadow-lg transition-all active:transform active:scale-95"
+          >
+            Back to Menu
+          </a>
+          <a
+            href="/support"
+            class="px-8 py-3 bg-white border border-gray-300 text-gray-700 font-semibold rounded-xl hover:bg-gray-50 transition-all"
+          >
+            Contact Help
+          </a>
+        </div>
+
+        <p class="mt-8 text-xs text-gray-400 uppercase tracking-widest">
+          Error Code: 403 Forbidden
+        </p>
+      </div>
+    </main>
+    <%- include('partials/footer') %>
+  </body>
+</html>
