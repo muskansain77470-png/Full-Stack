@@ -1,148 +1,212 @@
 const Product = require("../models/Product");
 const Order = require("../models/Order");
+const Support = require("../models/Support");
 const fs = require("fs");
 const path = require("path");
+const nodemailer = require("nodemailer");
 
-// 1. Load Admin Dashboard
+/**
+ * 1. Load Admin Dashboard
+ */
 exports.getDashboard = async (req, res) => {
     try {
-        const products = await Product.find().sort({ createdAt: -1 });
-        
-        // Populate user details to show who ordered (e.g., name and email)
-        const orders = await Order.find()
-            .populate('user', 'name email') 
-            .sort({ createdAt: -1 });
+        const [products, orders, supports] = await Promise.all([
+            Product.find().sort({ createdAt: -1 }).lean(),
+            Order.find()
+                .populate('user', 'username email phone') 
+                .populate('items.productId')
+                .sort({ createdAt: -1 })
+                .lean(),
+            Support.find()
+                .populate('user', 'username email')
+                .sort({ createdAt: -1 })
+                .lean()
+        ]);
+
+        const validOrders = orders.map(order => ({
+            ...order,
+            user: order.user || { username: "Guest User", email: "N/A", phone: "No Contact" }
+        }));
 
         res.render("adminDashboard", {
             user: req.user,
-            products: products,
-            orders: orders
+            products: products || [],
+            orders: validOrders || [],
+            supports: supports || [],
+            title: "Admin Command Center"
         });
     } catch (err) {
-        console.error("Dashboard Error:", err);
-        res.status(500).send("Error loading dashboard data.");
+        console.error("Dashboard Loading Error:", err);
+        res.status(500).send(`
+            <div style="font-family: sans-serif; padding: 50px; text-align: center; background: #fff5f5; border-radius: 20px; margin: 50px; border: 1px solid #ffcdd2;">
+                <h1 style="color: #d32f2f;">System Error</h1>
+                <p style="color: #555;">Could not load management data: ${err.message}</p>
+                <a href="/admin/dashboard" style="display: inline-block; margin-top: 20px; text-decoration: none; color: #fff; background: #1976d2; padding: 10px 20px; border-radius: 5px;">Retry</a>
+            </div>
+        `);
     }
 };
 
-// 2. Add New Product
+/**
+ * 2. Add New Product
+ */
 exports.addProduct = async (req, res) => {
     try {
         const { name, price, category, description, stock } = req.body;
+        const imagePath = req.file ? req.file.filename : 'default-food.png';
         
-        // Handle file upload or default image
-        let imagePath = req.file ? req.file.filename : 'default-food.png';
-
         const newProduct = new Product({ 
-            name, 
+            name: name.trim(), 
             price: parseFloat(price) || 0, 
             category, 
-            description, 
-            image: imagePath,
+            description: description.trim(), 
+            image: imagePath, 
             stock: parseInt(stock) || 0 
         });
-
+        
         await newProduct.save();
         res.redirect("/admin/dashboard"); 
     } catch (err) {
         console.error("Add Product Error:", err);
-        // If upload failed, we should delete the uploaded file to keep storage clean
-        if (req.file) {
-            const uploadedPath = path.join(__dirname, "../public/images", req.file.filename);
-            if (fs.existsSync(uploadedPath)) fs.unlinkSync(uploadedPath);
-        }
-        res.status(500).send("Failed to add product. Ensure all fields are valid.");
+        res.status(500).json({ success: false, message: "Failed to save product" });
     }
 };
 
-// 3. Update Stock (AJAX/API)
+/**
+ * 3. Update Product Stock (AJAX)
+ */
 exports.updateStock = async (req, res) => {
     try {
-        const { productId, stock } = req.body; 
+        const { productId, stock } = req.body;
+        const stockValue = Math.max(0, parseInt(stock) || 0);
         
-        if (!productId) {
-            return res.status(400).json({ success: false, message: "Product ID is required" });
-        }
-
-        const updatedProduct = await Product.findByIdAndUpdate(
+        const updated = await Product.findByIdAndUpdate(
             productId, 
-            { stock: Math.max(0, parseInt(stock) || 0) }, // Prevent negative stock
+            { stock: stockValue }, 
             { new: true }
         );
 
-        if (!updatedProduct) {
-            return res.status(404).json({ success: false, message: "Product not found" });
-        }
+        if (!updated) return res.status(404).json({ success: false, message: "Product not found" });
 
-        res.json({ 
-            success: true, 
-            message: "Stock updated successfully", 
-            currentStock: updatedProduct.stock 
-        });
+        res.json({ success: true, currentStock: updated.stock });
     } catch (err) {
-        console.error("Stock Update Error:", err);
-        res.status(500).json({ success: false, message: "Internal server error" });
+        res.status(500).json({ success: false, message: "Server error" });
     }
 };
 
-// 4. Delete Product and its Image
+/**
+ * 4. Delete Product (With Image Cleanup)
+ */
 exports.deleteProduct = async (req, res) => {
     try {
         const product = await Product.findById(req.params.id);
-        
-        if (!product) {
-            return res.status(404).send("Product not found");
-        }
+        if (!product) return res.status(404).send("Product not found");
 
-        // 1. Delete associated image file from disk
+        // FIX: Safer File Deletion
         if (product.image && product.image !== 'default-food.png') {
-            // Updated path logic to be more robust
             const filePath = path.join(__dirname, "..", "public", "images", product.image);
-            
             try {
                 if (fs.existsSync(filePath)) {
                     fs.unlinkSync(filePath);
                 }
             } catch (fileErr) {
-                console.warn("Image file not found on disk, but continuing with DB deletion.");
+                console.warn("File deletion failed, proceeding with DB record removal:", fileErr.message);
             }
         }
-        
-        // 2. Delete from Database
+
         await Product.findByIdAndDelete(req.params.id);
         res.redirect("/admin/dashboard");
-
     } catch (err) {
-        console.error("Delete Error:", err);
+        console.error("Delete Product Error:", err);
         res.status(500).send("Error deleting product");
     }
 };
 
-// 5. Update Order Status (AJAX support)
+/**
+ * 5. Update Order Status (AJAX)
+ */
 exports.updateOrderStatus = async (req, res) => {
     try {
         const { orderId, status } = req.body;
-
-        if (!orderId || !status) {
-            return res.status(400).json({ success: false, message: "Order ID and status required" });
-        }
-
-        const updatedOrder = await Order.findByIdAndUpdate(
-            orderId, 
-            { status: status },
-            { new: true }
-        );
-
-        if (!updatedOrder) {
-            return res.status(404).json({ success: false, message: "Order not found" });
-        }
+        const updatedOrder = await Order.findByIdAndUpdate(orderId, { status }, { new: true });
         
-        res.json({ 
-            success: true, 
-            message: `Order status changed to ${status}`,
-            updatedStatus: updatedOrder.status
-        });
+        if (!updatedOrder) return res.status(404).json({ success: false });
+
+        res.json({ success: true, status: updatedOrder.status });
     } catch (err) {
-        console.error("Update Status Error:", err);
-        res.status(500).json({ success: false, message: "Error updating status" });
+        res.status(500).json({ success: false });
+    }
+};
+
+/**
+ * 6. Update Support Ticket Status (AJAX)
+ */
+exports.updateSupportStatus = async (req, res) => {
+    try {
+        const { supportId, status } = req.body;
+        const updatedSupport = await Support.findByIdAndUpdate(supportId, { status }, { new: true });
+        
+        if (!updatedSupport) return res.status(404).json({ success: false });
+
+        res.json({ success: true, currentStatus: updatedSupport.status });
+    } catch (err) {
+        res.status(500).json({ success: false });
+    }
+};
+
+/**
+ * 7. Delete Support Ticket
+ */
+exports.deleteSupport = async (req, res) => {
+    try {
+        await Support.findByIdAndDelete(req.params.id);
+        res.redirect("/admin/dashboard");
+    } catch (err) {
+        res.status(500).send("Error removing ticket");
+    }
+};
+
+/**
+ * 8. Reply to Support Ticket via Email
+ */
+exports.replyToSupport = async (req, res) => {
+    try {
+        const { supportId, customerEmail, replyMessage, subject } = req.body;
+
+        if (!process.env.EMAIL_USER || !process.env.EMAIL_PASS) {
+            return res.status(500).json({ success: false, message: "SMTP Credentials Missing" });
+        }
+
+        const transporter = nodemailer.createTransport({
+            service: "gmail",
+            auth: {
+                user: process.env.EMAIL_USER,
+                pass: process.env.EMAIL_PASS,
+            },
+        });
+
+        await transporter.sendMail({
+            from: `"FullStack Cafe Support" <${process.env.EMAIL_USER}>`,
+            to: customerEmail,
+            subject: `Re: ${subject}`,
+            html: `
+                <div style="font-family: sans-serif; padding: 25px; border: 1px solid #f0f0f0; border-radius: 12px;">
+                    <h2 style="color: #1e293b;">Support Ticket Response</h2>
+                    <p>Original Issue: <strong>${subject}</strong></p>
+                    <div style="margin: 20px 0; padding: 15px; border-left: 4px solid #0f172a; background: #f9fafb;">
+                        ${replyMessage}
+                    </div>
+                    <p style="font-size: 12px; color: #94a3b8;">FullStack Cafe Command Center</p>
+                </div>`
+        });
+
+        // Resolve ticket after email
+        await Support.findByIdAndUpdate(supportId, { status: 'resolved' });
+        
+        res.json({ success: true, message: "Reply sent and ticket resolved." });
+        
+    } catch (err) {
+        console.error("Email Error:", err);
+        res.status(500).json({ success: false, message: "Check SMTP/Gmail App Password." });
     }
 };

@@ -9,6 +9,20 @@
         .status-badge { transition: all 0.3s ease; }
         .tab-content { animation: fadeIn 0.4s ease-out; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Order Status Colors */
+        .status-Pending { background-color: #fffbeb; color: #d97706; border: 1px solid #fde68a; }
+        .status-Preparing { background-color: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; }
+        .status-Ready { background-color: #faf5ff; color: #9333ea; border: 1px solid #e9d5ff; }
+        .status-Delivered { background-color: #ecfdf5; color: #059669; border: 1px solid #a7f3d0; }
+
+        /* Support Status Styles */
+        .ticket-open { border-left: 6px solid #ef4444; }
+        .ticket-in-progress { border-left: 6px solid #f59e0b; }
+        .ticket-resolved { border-left: 6px solid #10b981; opacity: 0.7; }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
     </style>
 </head>
 <body class="bg-slate-50 font-sans text-slate-900">
@@ -16,29 +30,33 @@
 
     <div class="min-h-screen p-4 md:p-8">
         <div class="max-w-7xl mx-auto">
-            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-10">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-6 mb-10">
                 <div>
                     <h1 class="text-4xl font-black tracking-tighter text-slate-800 uppercase">Command Center</h1>
-                    <p class="text-slate-500 font-medium">Manage inventory, stock levels, and live orders.</p>
+                    <p class="text-slate-500 font-medium">Manage inventory, orders, and customer support.</p>
                 </div>
-                <a href="/admin/products/add" class="group flex items-center gap-2 bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95">
-                    <span class="text-xl group-hover:rotate-90 transition-transform">+</span>
-                    Add New Product
-                </a>
+                <div class="flex gap-3 w-full md:w-auto">
+                    <a href="/admin/add-product" class="flex-1 md:flex-none flex items-center justify-center gap-2 bg-slate-900 text-white px-8 py-4 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95">
+                        <span class="text-xl">+</span> Add Product
+                    </a>
+                </div>
             </div>
 
-            <div class="flex p-1 bg-slate-200 rounded-2xl w-fit mb-8 shadow-inner">
-                <button onclick="switchTab('orders')" id="btn-orders" class="tab-btn px-8 py-3 rounded-xl font-bold transition-all bg-white shadow-sm text-slate-900">
+            <div class="flex p-1 bg-slate-200 rounded-2xl w-full md:w-fit mb-8 shadow-inner overflow-x-auto no-scrollbar">
+                <button onclick="switchTab('orders')" id="btn-orders" class="tab-btn px-6 md:px-8 py-3 rounded-xl font-bold transition-all bg-white shadow-sm text-slate-900 whitespace-nowrap">
                     Live Orders (<%= orders.length %>)
                 </button>
-                <button onclick="switchTab('products')" id="btn-products" class="tab-btn px-8 py-3 rounded-xl font-bold transition-all text-slate-500 hover:text-slate-700">
+                <button onclick="switchTab('products')" id="btn-products" class="tab-btn px-6 md:px-8 py-3 rounded-xl font-bold transition-all text-slate-500 hover:text-slate-700 whitespace-nowrap">
                     Menu & Stock
+                </button>
+                <button onclick="switchTab('support')" id="btn-support" class="tab-btn px-6 md:px-8 py-3 rounded-xl font-bold transition-all text-slate-500 hover:text-slate-700 whitespace-nowrap">
+                    Support (<%= supports.length %>)
                 </button>
             </div>
 
             <div id="orders-section" class="tab-content transition-all duration-300">
-                <% if (orders.length > 0) { %>
-                    <div class="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden">
+                <% if (orders && orders.length > 0) { %>
+                    <div class="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden overflow-x-auto">
                         <table class="w-full text-left border-collapse">
                             <thead class="bg-slate-50 border-b border-slate-100 uppercase text-[10px] tracking-widest font-black text-slate-400">
                                 <tr>
@@ -52,23 +70,22 @@
                                 <% orders.forEach(order => { %>
                                 <tr class="hover:bg-slate-50/50 transition-colors">
                                     <td class="p-6">
-                                        <div class="font-bold text-slate-800"><%= order.user ? order.user.username : 'Guest' %></div>
-                                        <div class="text-xs text-slate-400 font-medium"><%= order.user ? order.user.phone : 'No Phone' %></div>
+                                        <div class="font-bold text-slate-800"><%= order.user ? order.user.username : 'Guest User' %></div>
+                                        <div class="text-xs text-slate-400 font-medium"><%= order.user ? order.user.phone : 'No Contact' %></div>
                                     </td>
                                     <td class="p-6">
                                         <div class="flex flex-col gap-1">
                                             <% order.items.forEach(item => { %>
                                                 <span class="text-sm font-semibold text-slate-600">
-                                                    • <%= item.productId ? item.productId.name : 'Unknown' %> <span class="text-slate-400">×<%= item.quantity %></span>
+                                                    • <%= item.productId ? item.productId.name : 'Item Removed' %> <span class="text-slate-400">×<%= item.quantity %></span>
                                                 </span>
                                             <% }) %>
                                         </div>
                                     </td>
                                     <td class="p-6 font-black text-slate-900">₹<%= order.totalAmount %></td>
                                     <td class="p-6 text-right">
-                                        <select onchange="updateOrderStatus('<%= order._id %>', this.value)" 
-                                            class="status-select font-bold text-xs rounded-xl px-4 py-2 border-none ring-1 ring-slate-200 focus:ring-2 focus:ring-slate-900 cursor-pointer 
-                                            <%= order.status === 'Delivered' ? 'bg-emerald-50 text-emerald-600' : 'bg-amber-50 text-amber-600' %>">
+                                        <select onchange="updateOrderStatus('<%= order._id %>', this.value, this)" 
+                                            class="status-select font-bold text-xs rounded-xl px-4 py-2 outline-none cursor-pointer status-<%= order.status %>">
                                             <% ['Pending', 'Preparing', 'Ready', 'Delivered'].forEach(s => { %>
                                                 <option value="<%= s %>" <%= order.status == s ? 'selected' : '' %>><%= s %></option>
                                             <% }) %>
@@ -86,111 +103,184 @@
                 <% } %>
             </div>
 
-            <div id="products-section" class="tab-content hidden grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                <% products.forEach(product => { %>
-                <div class="group bg-white p-4 rounded-[2.5rem] shadow-sm border border-slate-100 transition-all duration-300">
-                    <div class="relative overflow-hidden rounded-[2rem] mb-4 aspect-square bg-slate-100">
-                        <img src="<%= product.image.startsWith('http') ? product.image : '/images/' + product.image %>" 
-                             class="w-full h-full object-cover">
-                        <div class="absolute top-4 left-4">
-                            <span id="stock-badge-<%= product._id %>" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter shadow-sm
-                                <%= product.stock > 0 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white' %>">
-                                <%= product.stock > 0 ? 'In Stock' : 'Out of Stock' %>
-                            </span>
-                        </div>
-                    </div>
-                    
-                    <div class="px-2">
-                        <h3 class="font-black text-lg text-slate-800 truncate"><%= product.name %></h3>
-                        <p class="text-slate-400 text-xs mb-4">₹<%= product.price %> • <%= product.category %></p>
-                        
-                        <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4">
-                            <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Adjust Inventory</label>
-                            <div class="flex items-center gap-2">
-                                <input type="number" id="input-stock-<%= product._id %>" value="<%= product.stock %>" 
-                                       class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-slate-900 outline-none">
-                                <button onclick="updateStock('<%= product._id %>')" 
-                                        class="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-slate-700 transition-all active:scale-90">
-                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
-                                </button>
+            <div id="products-section" class="tab-content hidden">
+                <div class="mb-6">
+                    <input type="text" id="productSearch" onkeyup="filterProducts()" placeholder="Search menu..." 
+                           class="w-full md:w-72 bg-white border border-slate-200 rounded-2xl px-6 py-3 text-sm focus:ring-4 focus:ring-slate-900/5 outline-none transition-all">
+                </div>
+
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6" id="productGrid">
+                    <% products.forEach(product => { %>
+                    <div class="product-card group bg-white p-4 rounded-[2.5rem] shadow-sm border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300">
+                        <div class="relative overflow-hidden rounded-[2rem] mb-4 aspect-square bg-slate-100">
+                            <img src="/images/<%= product.image %>" class="w-full h-full object-cover" onerror="this.src='/images/default-food.png'">
+                            <div class="absolute top-4 left-4">
+                                <span id="stock-badge-<%= product._id %>" class="px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter shadow-sm
+                                    <%= product.stock > 0 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white' %>">
+                                    <%= product.stock > 0 ? 'In Stock' : 'Out of Stock' %>
+                                </span>
                             </div>
                         </div>
+                        
+                        <div class="px-2">
+                            <h3 class="font-black text-lg text-slate-800 truncate product-name"><%= product.name %></h3>
+                            <p class="text-slate-400 text-xs mb-4">₹<%= product.price %> • <%= product.category %></p>
+                            
+                            <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 mb-4">
+                                <label class="block text-[10px] font-black text-slate-400 uppercase mb-2">Adjust Inventory</label>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="input-stock-<%= product._id %>" value="<%= product.stock %>" 
+                                           class="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-2 focus:ring-slate-900 outline-none">
+                                    <button onclick="updateStock('<%= product._id %>')" id="btn-stock-<%= product._id %>"
+                                            class="bg-slate-900 text-white p-2.5 rounded-xl hover:bg-slate-700 transition-all active:scale-90">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
+                                    </button>
+                                </div>
+                            </div>
 
-                        <form action="/admin/products/delete/<%= product._id %>" method="POST" onsubmit="return confirm('Delete this item permanently?')">
-                            <button type="submit" class="w-full text-red-400 hover:text-red-600 text-[10px] font-black uppercase tracking-widest py-2">
-                                Remove Product
-                            </button>
-                        </form>
+                            <form action="/admin/delete-product/<%= product._id %>" method="GET" onsubmit="return confirm('Delete this item permanently?')">
+                                <button type="submit" class="w-full text-red-400 hover:text-red-600 text-[10px] font-black uppercase tracking-widest py-2">
+                                    Remove Product
+                                </button>
+                            </form>
+                        </div>
                     </div>
+                    <% }) %>
                 </div>
-                <% }) %>
+            </div>
+
+            <div id="support-section" class="tab-content hidden">
+                <% if (supports && supports.length > 0) { %>
+                    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        <% supports.forEach(ticket => { %>
+                        <div id="ticket-<%= ticket._id %>" class="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 ticket-<%= ticket.status %> flex flex-col justify-between">
+                            <div>
+                                <div class="flex justify-between items-start mb-4 gap-2">
+                                    <div class="max-w-[60%]">
+                                        <span class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Subject</span>
+                                        <h3 class="font-black text-slate-800 uppercase leading-tight truncate text-sm"><%= ticket.subject %></h3>
+                                    </div>
+                                    <select onchange="updateSupportStatus('<%= ticket._id %>', this.value)" 
+                                            class="text-[10px] font-black uppercase rounded-lg px-2 py-1 bg-slate-100 border-none ring-1 ring-slate-200 cursor-pointer">
+                                        <option value="open" <%= ticket.status == 'open' ? 'selected' : '' %>>Open</option>
+                                        <option value="in-progress" <%= ticket.status == 'in-progress' ? 'selected' : '' %>>In Progress</option>
+                                        <option value="resolved" <%= ticket.status == 'resolved' ? 'selected' : '' %>>Resolved</option>
+                                    </select>
+                                </div>
+
+                                <div class="mb-4">
+                                    <p class="text-xs text-slate-600 bg-slate-50 p-4 rounded-xl italic border border-slate-100">"<%= ticket.message %>"</p>
+                                </div>
+                            </div>
+
+                            <div class="flex justify-between items-center pt-4 border-t border-slate-50 mt-auto">
+                                <div class="text-[10px]">
+                                    <p class="font-bold text-slate-800"><%= ticket.fullName %></p>
+                                    <p class="text-slate-400">Order: #<%= ticket.orderId || 'General' %></p>
+                                </div>
+                                <a href="/admin/delete-support/<%= ticket._id %>" onclick="return confirm('Archive ticket?')" class="text-slate-300 hover:text-red-500 transition-colors">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>
+                                </a>
+                            </div>
+                        </div>
+                        <% }) %>
+                    </div>
+                <% } else { %>
+                    <div class="bg-white p-20 rounded-[3rem] text-center border border-dashed border-slate-200">
+                        <p class="text-slate-400 font-bold">No support requests. Everyone is happy! 😊</p>
+                    </div>
+                <% } %>
             </div>
         </div>
     </div>
 
     <script>
-        // Tab Switching Logic
         function switchTab(tab) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
-            document.getElementById(tab + '-section').classList.remove('hidden');
+            const target = document.getElementById(tab + '-section');
+            if(target) target.classList.remove('hidden');
             
-            const ordersBtn = document.getElementById('btn-orders');
-            const productsBtn = document.getElementById('btn-products');
+            const btns = {
+                orders: document.getElementById('btn-orders'),
+                products: document.getElementById('btn-products'),
+                support: document.getElementById('btn-support')
+            };
             
-            const activeClass = "px-8 py-3 rounded-xl font-bold transition-all bg-white shadow-sm text-slate-900";
-            const inactiveClass = "px-8 py-3 rounded-xl font-bold transition-all text-slate-500 hover:text-slate-700";
+            const activeClass = "px-6 md:px-8 py-3 rounded-xl font-bold transition-all bg-white shadow-sm text-slate-900 whitespace-nowrap";
+            const inactiveClass = "px-6 md:px-8 py-3 rounded-xl font-bold transition-all text-slate-500 hover:text-slate-700 whitespace-nowrap";
 
-            if(tab === 'orders') {
-                ordersBtn.className = activeClass;
-                productsBtn.className = inactiveClass;
-            } else {
-                productsBtn.className = activeClass;
-                ordersBtn.className = inactiveClass;
-            }
+            Object.keys(btns).forEach(key => {
+                if(btns[key]) btns[key].className = (key === tab) ? activeClass : inactiveClass;
+            });
         }
 
-        // Update Order Status (Pending -> Delivered etc)
-        async function updateOrderStatus(id, status) {
+        function filterProducts() {
+            const input = document.getElementById('productSearch').value.toLowerCase();
+            const cards = document.querySelectorAll('.product-card');
+            cards.forEach(card => {
+                const name = card.querySelector('.product-name').innerText.toLowerCase();
+                card.style.display = name.includes(input) ? 'block' : 'none';
+            });
+        }
+
+        async function updateSupportStatus(supportId, status) {
+            const card = document.getElementById(`ticket-${supportId}`);
+            if(!card) return;
+            card.style.opacity = '0.5';
+            try {
+                const res = await fetch('/admin/support/update-status', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ supportId, status })
+                });
+                if(res.ok) {
+                    card.className = `bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200 flex flex-col justify-between ticket-${status}`;
+                }
+            } catch (err) { alert("Network error."); }
+            finally { card.style.opacity = '1'; }
+        }
+
+        async function updateOrderStatus(orderId, status, selectElement) {
+            selectElement.disabled = true;
             try {
                 const res = await fetch('/admin/orders/update-status', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({orderId: id, status})
+                    body: JSON.stringify({ orderId, status })
                 });
-                if(res.ok) location.reload();
-            } catch (err) {
-                alert("Error updating order.");
-            }
+                if(res.ok) {
+                    selectElement.className = `status-select font-bold text-xs rounded-xl px-4 py-2 outline-none cursor-pointer status-${status}`;
+                }
+            } catch (err) { alert("Network error."); }
+            finally { selectElement.disabled = false; }
         }
 
-        // THE FIX: Update Stock Level Logic
         async function updateStock(productId) {
-            const newStock = document.getElementById(`input-stock-${productId}`).value;
+            const stockInput = document.getElementById(`input-stock-${productId}`);
+            const btn = document.getElementById(`btn-stock-${productId}`);
             const badge = document.getElementById(`stock-badge-${productId}`);
+            const newVal = stockInput.value;
             
+            stockInput.disabled = true;
+            btn.innerHTML = '...';
+
             try {
                 const res = await fetch('/admin/products/update-stock', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ productId, stock: newStock })
+                    body: JSON.stringify({ productId, stock: newVal })
                 });
-                
                 const data = await res.json();
-                
                 if(data.success) {
-                    // Update the badge colors immediately
-                    if(parseInt(newStock) > 0) {
-                        badge.innerText = "In Stock";
-                        badge.className = "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter shadow-sm bg-emerald-500 text-white";
-                    } else {
-                        badge.innerText = "Out of Stock";
-                        badge.className = "px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter shadow-sm bg-red-500 text-white";
-                    }
-                    alert("Inventory Updated!");
+                    badge.innerText = parseInt(newVal) > 0 ? "In Stock" : "Out of Stock";
+                    badge.className = `px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-tighter shadow-sm ${parseInt(newVal) > 0 ? 'bg-emerald-500 text-white' : 'bg-red-500 text-white'}`;
+                } else {
+                    alert("Failed to update stock.");
                 }
-            } catch (err) {
-                console.error(err);
-                alert("Failed to update stock.");
+            } catch (err) { alert("Connection error."); }
+            finally { 
+                stockInput.disabled = false; 
+                btn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>';
             }
         }
     </script>

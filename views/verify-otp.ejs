@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Verify Your Email | FullStack Café</title>
+</head>
+<body class="bg-slate-50 flex items-center justify-center min-h-screen p-6">
+
+    <div class="bg-white p-10 rounded-[2.5rem] shadow-xl border border-slate-100 max-w-md w-full text-center">
+        <div class="mb-6 inline-flex items-center justify-center w-16 h-16 bg-slate-900 text-white rounded-2xl text-2xl font-black">
+            ☕
+        </div>
+
+        <h1 class="text-3xl font-black tracking-tighter text-slate-800 uppercase mb-2">Verify Email</h1>
+        
+        <div id="msgDiv" class="hidden mb-4 p-3 rounded-xl text-xs font-bold uppercase tracking-tight"></div>
+
+        <p class="text-slate-500 mb-8 text-sm leading-relaxed">
+            A 6-digit code was sent to <br>
+            <span class="font-bold text-slate-900"><%= email %></span>
+        </p>
+
+        <form id="verifyForm" class="space-y-6">
+            <input type="hidden" name="email" id="email" value="<%= email %>">
+            <input type="hidden" name="type" id="type" value="<%= type %>">
+            
+            <div class="text-left">
+                <label class="block text-[10px] font-black text-slate-400 uppercase mb-3 tracking-widest px-2">OTP Verification Code</label>
+                <input type="text" name="otp" id="otp-input" placeholder="000000" maxlength="6" required autofocus
+                    class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-5 text-3xl tracking-[0.5em] text-center font-black focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all placeholder:text-slate-200">
+            </div>
+
+            <button type="submit" id="submitBtn" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95">
+                <span id="btnText">Verify Account</span>
+            </button>
+        </form>
+
+        <div class="mt-8 pt-6 border-t border-slate-50">
+            <div id="resend-container">
+                <p id="timer-text" class="text-xs font-bold text-slate-400 uppercase tracking-tighter">
+                    Resend code in <span id="timer" class="text-slate-900">00:59</span>
+                </p>
+                
+                <button type="button" id="resendBtn" class="hidden text-xs font-black text-slate-900 uppercase underline decoration-2 underline-offset-4 hover:text-blue-600 transition-colors">
+                    Resend New Code
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const verifyForm = document.getElementById('verifyForm');
+        const submitBtn = document.getElementById('submitBtn');
+        const btnText = document.getElementById('btnText');
+        const msgDiv = document.getElementById('msgDiv');
+        const otpInput = document.getElementById('otp-input');
+
+        // 1. Handle Verification Submit
+        verifyForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            submitBtn.disabled = true;
+            btnText.innerText = 'Verifying...';
+
+            const payload = {
+                email: document.getElementById('email').value,
+                otp: otpInput.value,
+                type: document.getElementById('type').value
+            };
+
+            try {
+                const response = await fetch('/verify-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                // If your controller returns HTML (res.render), fetch handles it like this:
+                if (response.redirected) {
+                    window.location.href = response.url;
+                    return;
+                }
+
+                const result = await response.text();
+                // If it didn't redirect, it likely rendered the page again with an error. 
+                // We replace the current document with the error page returned.
+                document.open();
+                document.write(result);
+                document.close();
+
+            } catch (err) {
+                msgDiv.innerText = "Connection Error";
+                msgDiv.className = "mb-4 p-3 rounded-xl bg-red-50 text-red-600 text-xs font-bold uppercase block";
+                submitBtn.disabled = false;
+                btnText.innerText = 'Verify Account';
+            }
+        });
+
+        // 2. Timer & Resend Logic
+        let timeLeft = 59;
+        const timerSpan = document.getElementById('timer');
+        const timerText = document.getElementById('timer-text');
+        const resendBtn = document.getElementById('resendBtn');
+
+        const countdown = setInterval(() => {
+            if (timeLeft <= 0) {
+                clearInterval(countdown);
+                timerText.classList.add('hidden');
+                resendBtn.classList.remove('hidden');
+            } else {
+                timerSpan.innerHTML = `00:${timeLeft < 10 ? '0' : ''}${timeLeft}`;
+                timeLeft -= 1;
+            }
+        }, 1000);
+
+        // 3. Resend OTP Fetch
+        resendBtn.addEventListener('click', async () => {
+            const email = document.getElementById('email').value;
+            const type = document.getElementById('type').value;
+
+            try {
+                const response = await fetch('/resend-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, type })
+                });
+                
+                const result = await response.text();
+                document.open();
+                document.write(result);
+                document.close();
+            } catch (err) {
+                alert("Failed to resend code.");
+            }
+        });
+
+        // 4. Input UX
+        otpInput.addEventListener('input', function() {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+    </script>
+</body>
+</html>

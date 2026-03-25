@@ -19,23 +19,45 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       trim: true,
-      // unique: true ko hata diya hai taaki phone number repeat hone par crash na ho
+      default: "",
     },
     password: {
       type: String,
       required: [true, "Password is required"],
+      select: false, // Hidden by default for security
     },
     avatar: {
       type: String,
-      default: "default-avatar.png",
+      default: "/images/default-avatar.png",
     },
     role: {
       type: String,
-      enum: ["user", "admin"],
-      default: "user",
+      enum: {
+        values: ["user", "admin"],
+        message: '{VALUE} is not a valid role'
+      },
+      default: "user", 
+    },
+    isVerified: {
+      type: Boolean,
+      default: false, 
+    },
+    otp: {
+      type: String, 
+    },
+    otpExpires: {
+      type: Date, 
     },
   },
-  { timestamps: true }
+  { 
+    timestamps: true,
+    toJSON: { virtuals: true }, 
+    toObject: { virtuals: true }
+  }
 );
+
+userSchema.virtual('isAdmin').get(function() {
+  return this.role === 'admin';
+});
 
 module.exports = mongoose.model("User", userSchema);

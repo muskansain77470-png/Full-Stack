@@ -1,11 +1,15 @@
 const express = require("express");
 const router = express.Router();
-const { getProductsPage, getProductsAPI } = require("../controllers/productController");
+const productController = require("../controllers/productController");
+const extractUser = require('../middlewares/extractUser');
 
-// PUBLIC: Renders the products.ejs page
-router.get("/", getProductsPage);
+// Apply extractUser so the "Add to Bag" button knows if the user is logged in
+router.use(extractUser);
 
-// PUBLIC API: The endpoint your frontend script calls
-router.get("/api", getProductsAPI);
+// PUBLIC: Renders the products.ejs page at /products
+router.get("/", productController.getProductsPage);
+
+// PUBLIC API: Used by fetch() in product.ejs to load/filter items
+router.get("/api", productController.getProductsAPI);
 
 module.exports = router;

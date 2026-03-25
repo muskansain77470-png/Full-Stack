@@ -34,6 +34,6 @@ const supportSchema = new mongoose.Schema({
         type: Date, 
         default: Date.now 
     }
-});
+}, { timestamps: true }); // Added timestamps for better tracking
 
 module.exports = mongoose.model("Support", supportSchema);

@@ -44,6 +44,15 @@
         }
         .cart-animate { animation: pulse-cart 0.5s ease-in-out; }
 
+        /* Toast Animation */
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .toast-notification {
+            animation: slideIn 0.3s ease-out forwards;
+        }
+
         .pagination-bar {
             background: white;
             padding: 0.75rem 1.5rem;
@@ -75,8 +84,37 @@
 <body class="font-sans antialiased">
     <%- include('partials/header') %>
 
+    <div id="toast-container" class="fixed top-5 right-5 z-[1000] flex flex-col gap-3"></div>
+
     <script>
         const currentUserRole = "<%= user ? user.role : 'guest' %>";
+
+        // Toast Notification Helper
+        function showNotification(message, isError = false) {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            toast.className = `toast-notification flex items-center gap-3 px-6 py-4 rounded-2xl shadow-2xl border ${
+                isError ? 'bg-red-50 border-red-100 text-red-600' : 'bg-slate-900 border-slate-800 text-white'
+            } min-w-[280px]`;
+            
+            toast.innerHTML = `
+                <div class="flex-shrink-0">
+                    ${isError ? '⚠️' : '✅'}
+                </div>
+                <p class="text-sm font-bold tracking-tight">${message}</p>
+            `;
+
+            container.appendChild(toast);
+
+            // Auto-remove after 3 seconds
+            setTimeout(() => {
+                toast.style.opacity = '0';
+                toast.style.transform = 'translateX(20px)';
+                toast.style.transition = 'all 0.5s ease';
+                setTimeout(() => toast.remove(), 500);
+            }, 3000);
+        }
     </script>
 
     <header class="bg-[#F8FAFC] py-16 md:py-20 text-center border-b border-blue-50">
@@ -135,6 +173,7 @@
         </div>
 
         <div id="product-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8 min-h-[400px]"></div>
+        
         <div id="pagination-controls" class="flex justify-center items-center mt-16 mb-20"></div>
     </main>
 
@@ -179,7 +218,7 @@
 
         async function addToCart(event, productId, productName) {
             if (event) { event.preventDefault(); event.stopPropagation(); }
-            if (currentUserRole === 'admin') return alert("🚫 Admins cannot place orders.");
+            if (currentUserRole === 'admin') return showNotification("🚫 Admins cannot place orders.", true);
             if (currentUserRole === 'guest') return window.location.href = "/login";
 
             try {
@@ -191,17 +230,23 @@
 
                 const data = await response.json();
                 if (data.success) {
+                    // Update Badge and Animate
                     const cartBadge = document.getElementById('cart-count-badge');
                     if (cartBadge) {
                         cartBadge.innerText = data.cartCount;
-                        cartBadge.classList.remove('hidden');
+                        cartBadge.classList.remove('hidden', 'cart-animate');
+                        void cartBadge.offsetWidth; // Trigger reflow for re-animation
                         cartBadge.classList.add('flex', 'cart-animate');
-                        setTimeout(() => cartBadge.classList.remove('cart-animate'), 500);
                     }
+                    // NEW: Show Toast instead of alert
+                    showNotification(`${productName} added to bag!`);
                 } else {
-                    alert(data.message || "Could not add to cart");
+                    showNotification(data.message || "Could not add to cart", true);
                 }
-            } catch (err) { console.error("Cart error:", err); }
+            } catch (err) { 
+                console.error("Cart error:", err);
+                showNotification("Network error. Try again.", true);
+            }
         }
 
         function renderProducts(products) {
@@ -276,14 +321,15 @@
                 });
                 
                 const response = await fetch(`/products/api?${params}`);
+                if (!response.ok) throw new Error("Network response was not ok");
                 const data = await response.json();
                 
                 renderProducts(data.products);
                 renderPagination(data.totalPages, data.currentPage);
                 countDisplay.innerText = `${data.totalItems} Items Found`;
             } catch (err) {
-                console.error(err);
-                grid.innerHTML = `<div class="col-span-full text-center py-10"><p class="text-red-500 font-bold">Menu is currently unavailable.</p></div>`;
+                grid.innerHTML = `<div class="col-span-full text-center py-10"><p class="text-red-500 font-bold">Menu is currently unavailable. Please refresh.</p></div>`;
+                countDisplay.innerText = "Error Loading Menu";
             }
         }
 
@@ -325,7 +371,11 @@
         let searchTimer;
         document.getElementById("search-input").addEventListener("input", (e) => {
             clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => { state.search = e.target.value; state.page = 1; fetchMenu(); }, 400);
+            searchTimer = setTimeout(() => { 
+                state.search = e.target.value; 
+                state.page = 1; 
+                fetchMenu(); 
+            }, 400);
         });
 
         document.querySelectorAll(".category-btn").forEach((btn) => {
@@ -354,19 +404,14 @@
                 container.innerHTML = `
                     <div class="flex flex-col items-end">
                         <span class="text-slate-400 text-[10px] font-black uppercase tracking-widest mb-1">Current Inventory</span>
-                        <span class="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl font-bold text-lg border border-blue-100">
-                            ${stockVal} Units
-                        </span>
+                        <span class="bg-blue-50 text-blue-600 px-4 py-2 rounded-xl font-bold text-lg border border-blue-100">${stockVal} Units</span>
                     </div>`;
             } else if (stockVal <= 0) {
                 container.innerHTML = `<button disabled class="bg-slate-100 text-slate-400 px-10 py-4 rounded-2xl font-bold cursor-not-allowed">Sold Out</button>`;
             } else {
-                let stockLabel = "";
-                if (stockVal < 10) {
-                    stockLabel = `<p class="text-orange-500 text-[10px] font-black uppercase mb-2 animate-pulse">🔥 Only ${stockVal} left!</p>`;
-                } else {
-                    stockLabel = `<p class="text-emerald-500 text-[10px] font-black uppercase mb-2">✅ ${stockVal} available</p>`;
-                }
+                let stockLabel = stockVal < 10 
+                    ? `<p class="text-orange-500 text-[10px] font-black uppercase mb-2 animate-pulse">🔥 Only ${stockVal} left!</p>`
+                    : `<p class="text-emerald-500 text-[10px] font-black uppercase mb-2">✅ ${stockVal} available</p>`;
 
                 container.innerHTML = `
                     <div class="flex flex-col items-end">
