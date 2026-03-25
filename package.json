@@ -1,4 +1,13 @@
 {
+  "name": "full-stack-cafe",
+  "version": "1.0.0",
+  "description": "Full Stack Cafe Project",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "build": "echo \"No build needed\""
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
