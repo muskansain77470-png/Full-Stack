@@ -29,28 +29,43 @@ exports.getForgotPasswordPage = (req, res) => {
 
 // --- LOGIC METHODS (POST) ---
 
+/**
+ * FIXED SIGNUP LOGIC
+ * Handles duplicate checks and unverified user overwrites
+ */
 exports.postSignup = async (req, res) => {
     try {
         const { username, password, email, phone } = req.body;
         const cleanEmail = email.toLowerCase().trim();
         const cleanUsername = username.trim();
 
-        const existingUser = await User.findOne({ $or: [{ email: cleanEmail }, { username: cleanUsername }] });
+        // 1. Check if user exists
+        const existingUser = await User.findOne({ 
+            $or: [{ email: cleanEmail }, { username: cleanUsername }] 
+        });
         
         if (existingUser) {
-            const msg = "User already exists with this email or username.";
-            if (req.xhr || req.headers.accept.indexOf('json') > -1) {
-                return res.status(400).json({ success: false, message: msg });
-            }
-            return res.render("signup", { message: msg });
+            // Agar user verified hai, toh error dikhao
+            if (existingUser.isVerified) {
+                const msg = "User already exists with this email or username.";
+                if (req.xhr || req.headers.accept.indexOf('json') > -1) {
+                    return res.status(400).json({ success: false, message: msg });
+                }
+                return res.render("signup", { message: msg });
+            } 
+            
+            // Agar user verified NAHI hai, toh purana unverified record delete karke naya banane do
+            // Isse "User already exists" wala error nahi aayega naye users ke liye
+            await User.findByIdAndDelete(existingUser._id);
         }
 
+        // 2. Hash Password & Prepare Data
         const hashedPassword = await bcrypt.hash(password, 10);
         const avatarPath = req.file ? `/images/${req.file.filename}` : "/images/default-avatar.png";
-
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         const otpExpiry = Date.now() + 10 * 60 * 1000; 
 
+        // 3. Create New User
         const newUser = new User({
             username: cleanUsername,
             email: cleanEmail,
@@ -75,10 +90,11 @@ exports.postSignup = async (req, res) => {
 
     } catch (err) {
         console.error("Signup Error:", err);
+        const errorMsg = err.code === 11000 ? "Email or Username already taken." : err.message;
         if (req.xhr || req.headers.accept.indexOf('json') > -1) {
-            return res.status(500).json({ success: false, message: err.message });
+            return res.status(500).json({ success: false, message: errorMsg });
         }
-        res.render("signup", { message: "Error: " + err.message });
+        res.render("signup", { message: errorMsg });
     }
 };
 
@@ -86,12 +102,10 @@ exports.postLogin = async (req, res) => {
     try {
         const { username, password } = req.body;
         
-        // FIX: Added .select("+password") because the field is hidden by 'select: false' in the Schema
         const user = await User.findOne({ 
             username: { $regex: new RegExp(`^${username.trim()}$`, "i") } 
         }).select("+password");
 
-        // Check if user exists BEFORE comparing password to prevent "undefined" error
         if (!user) {
             const msg = "Invalid username or password.";
             if (req.xhr || req.headers.accept.indexOf('json') > -1) {
@@ -100,7 +114,6 @@ exports.postLogin = async (req, res) => {
             return res.render("login", { message: msg });
         }
 
-        // user.password is now a valid string, so bcrypt.compare won't fail
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
             const msg = "Invalid username or password.";
@@ -110,40 +123,7 @@ exports.postLogin = async (req, res) => {
             return res.render("login", { message: msg });
         }
 
-        // ADMIN BYPASS
-        if (user.role === "admin") {
-            const payload = { id: user._id, name: user.username, role: "admin", avatar: user.avatar };
-            const secret = process.env.JWT_SECRET || "fullstack_cafe_secret_key";
-            const token = jwt.sign(payload, secret, { expiresIn: "1d" });
-
-            res.cookie("token", token, {
-                httpOnly: true,
-                secure: process.env.NODE_ENV === "production",
-                maxAge: 24 * 60 * 60 * 1000
-            });
-
-            if (req.xhr || req.headers.accept.indexOf('json') > -1) {
-                return res.json({ success: true, redirectUrl: "/admin/dashboard" });
-            }
-            return res.redirect("/admin/dashboard");
-        }
-
-        // NORMAL USER VERIFICATION
-        if (!user.isVerified) {
-            const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-            user.otp = newOtp;
-            user.otpExpires = Date.now() + 10 * 60 * 1000;
-            await user.save();
-            await sendOTP(user.email, newOtp);
-
-            const verifyUrl = `/verify-otp?email=${user.email}&type=signup`;
-            if (req.xhr || req.headers.accept.indexOf('json') > -1) {
-                return res.json({ success: true, redirectUrl: verifyUrl, message: "Verification required." });
-            }
-            return res.redirect(verifyUrl);
-        }
-
-        // NORMAL USER TOKEN (Verified Users)
+        // --- JWT TOKEN GENERATION ---
         const payload = { id: user._id, name: user.username, role: user.role, avatar: user.avatar };
         const secret = process.env.JWT_SECRET || "fullstack_cafe_secret_key";
         const token = jwt.sign(payload, secret, { expiresIn: "1d" });
@@ -154,10 +134,26 @@ exports.postLogin = async (req, res) => {
             maxAge: 24 * 60 * 60 * 1000
         });
 
-        if (req.xhr || req.headers.accept.indexOf('json') > -1) {
-            return res.json({ success: true, redirectUrl: "/products" });
+        // Redirect based on verification status
+        if (!user.isVerified && user.role !== "admin") {
+            const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+            user.otp = newOtp;
+            user.otpExpires = Date.now() + 10 * 60 * 1000;
+            await user.save();
+            await sendOTP(user.email, newOtp);
+
+            const verifyUrl = `/verify-otp?email=${user.email}&type=signup`;
+            if (req.xhr || req.headers.accept.indexOf('json') > -1) {
+                return res.json({ success: true, redirectUrl: verifyUrl });
+            }
+            return res.redirect(verifyUrl);
         }
-        return res.redirect("/products");
+
+        const redirectUrl = user.role === "admin" ? "/admin/dashboard" : "/products";
+        if (req.xhr || req.headers.accept.indexOf('json') > -1) {
+            return res.json({ success: true, redirectUrl });
+        }
+        return res.redirect(redirectUrl);
 
     } catch (err) {
         console.error("Login Error:", err);
@@ -235,8 +231,8 @@ exports.postResendOTP = async (req, res) => {
         user.otpExpires = Date.now() + 10 * 60 * 1000;
         await user.save();
 
-        const sent = await sendOTP(user.email, newOtp);
-        return res.json({ success: sent, message: sent ? "New code sent!" : "Failed to send." });
+        await sendOTP(user.email, newOtp);
+        return res.json({ success: true, message: "New code sent!" });
     } catch (err) {
         res.status(500).json({ success: false, message: "Error resending OTP" });
     }
