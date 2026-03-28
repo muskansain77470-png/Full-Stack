@@ -4,28 +4,32 @@ const orderController = require("../controllers/orderController");
 const { isAuthenticated } = require("../middlewares/auth");
 
 /**
- * Route: View all orders for the logged-in user
+ * Route: View all orders (Main Route for pagination)
+ * URL: GET /orders?page=1
+ */
+router.get("/", isAuthenticated, orderController.getUserOrders);
+
+/**
+ * Route: View all orders for the logged-in user (Alias)
  * URL: GET /orders/my-orders
  */
 router.get("/my-orders", isAuthenticated, orderController.getUserOrders);
 
 /**
  * Route: Place a new order from the cart (Checkout)
- * URL: POST /orders/checkout
  */
 router.post("/checkout", isAuthenticated, orderController.createOrder);
 
 /**
  * Route: Reorder a previous order
- * URL: POST /orders/reorder/:id
- * This matches the fetch call in your userOrders.ejs
+ * Updated :id to :orderId to match controller/frontend
  */
-router.post("/reorder/:id", isAuthenticated, orderController.reorder);
+router.post("/reorder/:orderId", isAuthenticated, orderController.reorder);
 
 /**
  * Route: Cancel an existing pending order
- * URL: POST /orders/cancel/:id
+ * Updated :id to :orderId to match controller/frontend
  */
-router.post("/cancel/:id", isAuthenticated, orderController.cancelOrder);
+router.post("/cancel/:orderId", isAuthenticated, orderController.cancelOrder);
 
 module.exports = router;

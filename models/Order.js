@@ -52,4 +52,11 @@ const orderSchema = new mongoose.Schema({
     }
 });
 
-module.exports = mongoose.model("Order", orderSchema);
+/**
+ * FIXED: OverwriteModelError Fix
+ * Agar model pehle se compiled hai toh use use karega, 
+ * warna naya compile karega. Isse nodemon crash nahi hoga.
+ */
+const Order = mongoose.models.Order || mongoose.model("Order", orderSchema);
+
+module.exports = Order;

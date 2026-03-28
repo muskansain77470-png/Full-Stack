@@ -2,7 +2,7 @@
   "name": "full-stack-cafe",
   "version": "1.0.0",
   "description": "Full Stack Cafe Project",
-  "main": "server.js",
+  "main": "index.js",
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",

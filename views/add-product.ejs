@@ -57,6 +57,11 @@
                 </div>
 
                 <div>
+                    <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Initial Stock</label>
+                    <input type="number" name="stock" required class="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl" placeholder="10">
+                </div>
+
+                <div>
                     <label class="block text-xs font-bold uppercase text-gray-400 mb-2">Product Image</label>
                     <input type="file" name="image" accept="image/*" required class="w-full px-6 py-4 bg-gray-50 border border-gray-100 rounded-2xl border-dashed border-2">
                 </div>
@@ -79,6 +84,7 @@
         const form = document.getElementById('productForm');
         form.addEventListener('submit', () => {
             document.getElementById("toast").className = "show";
+            // Note: Form will naturally redirect after submission
         });
     </script>
 </body>

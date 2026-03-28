@@ -5,77 +5,126 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Your Bag | FullStack Cafe</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    
     <style>
-        .cart-item-row { transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+        .cart-item-row { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
         .cart-item-row.removing { 
             opacity: 0; 
-            transform: translateX(30px); 
+            transform: translateX(50px); 
+            filter: blur(10px);
             height: 0; 
-            padding-top: 0; 
-            padding-bottom: 0; 
+            padding: 0; 
+            margin: 0;
             overflow: hidden; 
+        }
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
     </style>
 </head>
-<body class="bg-gray-50 text-gray-900 font-sans antialiased">
+<body class="bg-[#f8fafc] text-gray-900 font-sans antialiased">
     <%- include('partials/header') %>
 
     <main class="max-w-4xl mx-auto px-4 py-12">
-        <h1 class="text-4xl font-black mb-8 tracking-tighter text-slate-900 uppercase">Shopping Bag</h1>
+        <div class="flex items-center justify-between mb-10">
+            <h1 class="text-5xl font-black tracking-tighter text-slate-900 uppercase italic">Your <span class="text-orange-500">Bag</span></h1>
+            <span class="bg-slate-200 text-slate-600 px-4 py-1 rounded-full text-[10px] font-black uppercase tracking-widest">
+                <%= cart?.items?.length || 0 %> Items
+            </span>
+        </div>
 
         <div id="cart-container">
             <% if (cart && cart.items && cart.items.length > 0) { %>
-                <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden">
-                    <div class="divide-y divide-gray-100" id="cart-items-list">
+                <div class="bg-white rounded-[3rem] shadow-2xl shadow-slate-200/60 border border-slate-100 overflow-hidden">
+                    
+                    <div class="divide-y divide-slate-50" id="cart-items-list">
                         <% cart.items.forEach(item => { %>
                             <% if (item.productId) { %>
-                            <div class="p-8 flex flex-col md:flex-row items-center gap-8 cart-item-row" id="item-<%= item.productId._id %>">
-                                <div class="relative group">
-                                    <img src="<%= item.productId.image %>" class="w-24 h-24 object-cover rounded-[1.5rem] shadow-md group-hover:scale-105 transition-transform" onerror="this.src='https://placehold.co/100x100?text=Food'">
+                            <div class="p-8 flex flex-col md:flex-row items-center gap-10 cart-item-row group/row" id="item-<%= item.productId._id %>">
+                                
+                                <div class="relative group cursor-pointer">
+                                    <div class="overflow-hidden rounded-[2rem] w-28 h-28 shadow-lg group-hover:shadow-orange-200/50 transition-all duration-500 border-4 border-white">
+                                        <img src="/images/<%= item.productId.image %>" 
+                                             class="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700" 
+                                             onerror="this.src='https://placehold.co/150x150?text=Delicious+Food'">
+                                    </div>
+                                    <div class="absolute -top-2 -right-2 bg-orange-600 text-white text-[8px] font-black px-2.5 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-xl uppercase tracking-widest">
+                                        Fresh
+                                    </div>
                                 </div>
 
                                 <div class="flex-grow text-center md:text-left">
-                                    <h3 class="font-black text-slate-800 text-xl"><%= item.productId.name %></h3>
-                                    <p class="text-slate-400 text-sm font-medium"><%= item.productId.category || 'Cafe Special' %></p>
-                                    <p class="text-slate-900 font-black mt-1">₹<span class="unit-price"><%= item.productId.price %></span></p>
+                                    <span class="text-[9px] font-bold text-orange-500 uppercase tracking-[0.3em] mb-1 block">
+                                        <%= item.productId.category || 'Cafe Special' %>
+                                    </span>
+                                    <h3 class="font-black text-slate-800 text-2xl tracking-tight"><%= item.productId.name %></h3>
+                                    <p class="text-slate-900 font-black text-lg mt-1">₹<span class="unit-price"><%= item.productId.price %></span></p>
+                                    <span class="hidden" id="stock-<%= item.productId._id %>"><%= item.productId.stock %></span>
                                 </div>
 
-                                <div class="flex items-center bg-slate-50 rounded-2xl px-5 py-2 border border-slate-100">
-                                    <button onclick="updateQuantity('<%= item.productId._id %>', -1)" class="w-10 h-10 flex items-center justify-center font-black text-slate-400 hover:text-slate-900 transition-colors text-xl">-</button>
-                                    <span id="qty-<%= item.productId._id %>" class="w-10 text-center font-black text-slate-800"><%= item.quantity %></span>
-                                    <button onclick="updateQuantity('<%= item.productId._id %>', 1)" class="w-10 h-10 flex items-center justify-center font-black text-slate-400 hover:text-slate-900 transition-colors text-xl">+</button>
+                                <div class="flex items-center bg-slate-50 rounded-[1.5rem] p-1.5 border border-slate-100 shadow-inner">
+                                    <button onclick="updateQuantity('<%= item.productId._id %>', -1)" class="w-12 h-12 flex items-center justify-center font-black text-slate-400 hover:text-red-500 hover:bg-white rounded-[1.2rem] transition-all text-xl">-</button>
+                                    <span id="qty-<%= item.productId._id %>" class="w-12 text-center font-black text-slate-800 text-lg"><%= item.quantity %></span>
+                                    <button onclick="updateQuantity('<%= item.productId._id %>', 1)" class="w-12 h-12 flex items-center justify-center font-black text-slate-400 hover:text-green-600 hover:bg-white rounded-[1.2rem] transition-all text-xl">+</button>
                                 </div>
 
-                                <button onclick="removeItem('<%= item.productId._id %>')" class="p-3 text-slate-300 hover:text-red-500 hover:bg-red-50 rounded-xl transition-all">
-                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                    </svg>
+                                <button onclick="removeItem('<%= item.productId._id %>')" class="p-4 text-slate-200 hover:text-red-500 hover:bg-red-50 rounded-2xl transition-all group/bin">
+                                    <i class="fas fa-trash-alt text-xl transform group-hover/bin:rotate-12 transition-transform"></i>
                                 </button>
                             </div>
                             <% } %>
                         <% }) %>
                     </div>
 
-                    <div class="p-10 bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-center gap-8">
+                    <% if (locals.totalPages > 1) { %>
+                        <div class="px-10 py-6 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
+                            <% if (locals.hasPreviousPage) { %>
+                                <a href="/cart?page=<%= previousPage %>" class="text-[10px] font-black text-slate-400 hover:text-slate-900 flex items-center gap-3 transition-all tracking-widest uppercase">
+                                    <i class="fas fa-chevron-left"></i> Prev
+                                </a>
+                            <% } else { %> <div class="w-10"></div> <% } %>
+
+                            <div class="flex gap-2">
+                                <% for(let i=1; i<=totalPages; i++) { %>
+                                    <a href="/cart?page=<%= i %>" class="w-8 h-8 flex items-center justify-center rounded-full text-[10px] font-black <%= currentPage === i ? 'bg-slate-900 text-white shadow-lg' : 'text-slate-300 hover:text-slate-900' %> transition-all">
+                                        <%= i %>
+                                    </a>
+                                <% } %>
+                            </div>
+
+                            <% if (locals.hasNextPage) { %>
+                                <a href="/cart?page=<%= nextPage %>" class="text-[10px] font-black text-slate-400 hover:text-slate-900 flex items-center gap-3 transition-all tracking-widest uppercase">
+                                    Next <i class="fas fa-chevron-right"></i>
+                                </a>
+                            <% } else { %> <div class="w-10"></div> <% } %>
+                        </div>
+                    <% } %>
+
+                    <div class="p-12 bg-slate-900 text-white flex flex-col sm:flex-row justify-between items-center gap-10">
                         <div class="text-center sm:text-left">
-                            <p class="text-xs font-bold text-slate-400 uppercase tracking-[0.2em] mb-1">Total Payable</p>
-                            <p class="text-4xl font-black">
+                            <p class="text-[10px] font-bold text-slate-500 uppercase tracking-[0.4em] mb-2">Grand Total</p>
+                            <p class="text-5xl font-black tracking-tighter">
                                 ₹<span id="cart-total"><%= cart.items.reduce((total, item) => total + (item.productId ? item.productId.price * item.quantity : 0), 0) %></span>
                             </p>
                         </div>
                         
-                        <button onclick="processCheckout()" class="w-full sm:w-auto px-16 py-5 bg-white text-slate-900 font-black uppercase tracking-widest rounded-[1.5rem] hover:bg-slate-100 shadow-2xl active:scale-95 transition-all">
-                            Place Order
+                        <button id="checkout-btn" onclick="processCheckout()" class="group relative w-full sm:w-auto px-20 py-6 bg-orange-600 text-white font-black uppercase tracking-[0.2em] rounded-[2rem] hover:bg-orange-500 shadow-[0_20px_50px_rgba(234,88,12,0.3)] active:scale-95 transition-all overflow-hidden">
+                            <span class="relative z-10">Place Order</span>
+                            <div class="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300"></div>
                         </button>
                     </div>
                 </div>
             <% } else { %>
-                <div class="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200 shadow-inner">
-                    <div class="text-8xl mb-8 animate-bounce">☕</div>
-                    <h2 class="text-3xl font-black text-slate-800">Your bag is empty!</h2>
-                    <p class="text-slate-400 mt-3 mb-10 font-medium text-lg">Looks like you haven't added any fuel yet.</p>
-                    <a href="/products" class="px-12 py-4 bg-slate-900 text-white font-black rounded-2xl hover:shadow-2xl hover:-translate-y-1 transition-all inline-block uppercase tracking-widest text-sm">
-                        Explore Menu
+                <div class="text-center py-32 bg-white rounded-[4rem] border-4 border-dashed border-slate-100 shadow-inner">
+                    <div class="text-9xl mb-10 drop-shadow-2xl grayscale hover:grayscale-0 transition-all duration-500 cursor-default">☕</div>
+                    <h2 class="text-4xl font-black text-slate-800 tracking-tight uppercase">Bag is Empty</h2>
+                    <p class="text-slate-400 mt-4 mb-12 font-medium text-lg max-w-xs mx-auto">Your caffeine levels are dangerously low. Fix that now!</p>
+                    <a href="/products" class="px-14 py-5 bg-slate-900 text-white font-black rounded-3xl hover:shadow-[0_20px_40px_rgba(0,0,0,0.2)] hover:-translate-y-2 transition-all inline-block uppercase tracking-[0.2em] text-xs">
+                        Browse Menu
                     </a>
                 </div>
             <% } %>
@@ -85,116 +134,129 @@
     <%- include('partials/footer') %>
 
     <script>
-    // 1. Logic to update Total Price in UI without refresh
+    // 1. Confetti Animation Function
+    function celebrate() {
+        confetti({
+            particleCount: 150,
+            spread: 70,
+            origin: { y: 0.6 },
+            colors: ['#ea580c', '#ffffff', '#1e293b']
+        });
+    }
+
+    // 2. Update Total UI
     function updateCartTotalUI() {
         let total = 0;
         const items = document.querySelectorAll('.cart-item-row:not(.removing)');
-        
         items.forEach(item => {
             const price = parseFloat(item.querySelector('.unit-price').innerText);
-            const qtyElement = item.querySelector('[id^="qty-"]');
-            if (qtyElement) {
-                const quantity = parseInt(qtyElement.innerText);
-                total += price * quantity;
-            }
+            const qty = parseInt(item.querySelector('[id^="qty-"]').innerText);
+            total += price * qty;
         });
-
         document.getElementById('cart-total').innerText = total;
-
-        // If no items are left, reload once to show the "Empty Bag" design
-        if (items.length === 0) {
-            setTimeout(() => location.reload(), 400);
-        }
+        if (items.length === 0) setTimeout(() => location.reload(), 500);
     }
 
-    // 2. AJAX: Update Quantity (+ or -)
+    // 3. Update Quantity AJAX
     async function updateQuantity(productId, change) {
+        const qtySpan = document.getElementById(`qty-${productId}`);
+        const stockEl = document.getElementById(`stock-${productId}`);
+        const stockLimit = stockEl ? parseInt(stockEl.innerText) : 99;
+        let currentQty = parseInt(qtySpan.innerText);
+
+        if (change === 1 && currentQty >= stockLimit) {
+            Swal.fire({ icon: 'warning', title: 'Out of Stock', text: `Only ${stockLimit} left!`, toast: true, position: 'top' });
+            return;
+        }
+
         try {
-            const response = await fetch('/cart/update-quantity', {
+            const res = await fetch('/cart/update-quantity', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ productId, change })
             });
-            const data = await response.json();
+            const data = await res.json();
             
             if (data.success) { 
-                const qtySpan = document.getElementById(`qty-${productId}`);
-                let currentQty = parseInt(qtySpan.innerText);
                 let newQty = currentQty + change;
-
                 if (newQty > 0) {
                     qtySpan.innerText = newQty;
                     updateCartTotalUI();
                 } else {
-                    // If user clicks '-' and quantity becomes 0, remove the item
                     removeItemFromUI(productId);
                 }
-                
-                // Update global header badge if it exists
-                const badge = document.getElementById('cart-count-badge');
-                if(badge && data.cartCount !== undefined) {
-                    badge.innerText = data.cartCount;
-                }
+                if(window.updateCartBadge) window.updateCartBadge(data.cartCount);
             }
-        } catch (err) { 
-            console.error("Update Error:", err); 
-        }
+        } catch (err) { console.error("Update Error:", err); }
     }
 
-    // 3. AJAX: Remove Item (Delete icon)
+    // 4. Remove Item AJAX
     async function removeItem(productId) {
-        if(!confirm("Remove this item from your bag?")) return;
-        try {
-            const response = await fetch(`/cart/remove/${productId}`, { 
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
-            
-            const data = await response.json();
-            if (data.success || response.ok) { 
-                removeItemFromUI(productId);
-                
-                const badge = document.getElementById('cart-count-badge');
-                if(badge && data.cartCount !== undefined) {
-                    badge.innerText = data.cartCount;
-                    if(data.cartCount === 0) badge.classList.add('hidden');
+        const result = await Swal.fire({
+            title: 'Remove Item?',
+            text: "This will remove the item from your bag.",
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonColor: '#ea580c',
+            confirmButtonText: 'Yes, remove it!'
+        });
+
+        if (result.isConfirmed) {
+            try {
+                const res = await fetch(`/cart/remove/${productId}`, { method: 'POST' });
+                const data = await res.json();
+                if (data.success) { 
+                    removeItemFromUI(productId);
+                    if(window.updateCartBadge) window.updateCartBadge(data.cartCount);
                 }
-            }
-        } catch (err) { 
-            console.error("Delete Error:", err); 
+            } catch (err) { console.error("Remove Error:", err); }
         }
     }
 
-    // 4. Helper: Smooth UI Removal
     function removeItemFromUI(productId) {
-        const itemRow = document.getElementById(`item-${productId}`);
-        if (itemRow) {
-            itemRow.classList.add('removing');
+        const row = document.getElementById(`item-${productId}`);
+        if (row) {
+            row.classList.add('removing');
             setTimeout(() => {
-                itemRow.remove();
+                row.remove();
                 updateCartTotalUI();
-            }, 300); // Matches the CSS transition time
+                if(document.querySelectorAll('.cart-item-row:not(.removing)').length === 0) location.reload();
+            }, 400);
         }
     }
 
-    // 5. AJAX: Checkout
+    // 5. Checkout & Celebrate
     async function processCheckout() {
+        const btn = document.getElementById('checkout-btn');
+        btn.disabled = true;
+        btn.innerText = "Processing...";
+
         try {
-            const response = await fetch('/orders/checkout', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
-            });
+            const res = await fetch('/orders/checkout', { method: 'POST' });
+            const data = await res.json();
             
-            const data = await response.json();
             if (data.success) {
-                alert("Order placed successfully! ☕");
-                window.location.href = '/orders/my-orders'; 
+                celebrate(); // FIREWORKS!
+                setTimeout(() => {
+                    Swal.fire({
+                        title: 'Success!',
+                        text: 'Order placed successfully. Redirecting to your orders...',
+                        icon: 'success',
+                        timer: 2000,
+                        showConfirmButton: false
+                    }).then(() => {
+                        window.location.href = '/orders/my-orders';
+                    });
+                }, 500);
             } else {
-                alert(data.message || "Checkout failed.");
+                Swal.fire('Error', data.message || "Failed to place order.", 'error');
+                btn.disabled = false;
+                btn.innerText = "Place Order";
             }
         } catch (err) {
-            console.error("Checkout Error:", err);
-            alert("Connection error. Try again.");
+            console.error("Checkout error:", err);
+            btn.disabled = false;
+            btn.innerText = "Place Order";
         }
     }
     </script>

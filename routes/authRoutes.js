@@ -4,14 +4,15 @@ const path = require("path");
 const multer = require("multer");
 const authController = require("../controllers/authController");
 
-// --- 1. MULTER CONFIGURATION FOR AVATARS ---
+// --- 1. MULTER CONFIGURATION ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
+        // Ensure this folder exists: public/images
         cb(null, path.join(process.cwd(), "public", "images")); 
     },
     filename: (req, file, cb) => {
         const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, 'avatar-' + uniqueSuffix + path.extname(file.originalname));
+        cb(null, 'user-' + uniqueSuffix + path.extname(file.originalname));
     }
 });
 
@@ -19,7 +20,7 @@ const fileFilter = (req, file, cb) => {
     if (file && file.mimetype.startsWith('image/')) {
         cb(null, true);
     } else {
-        cb(new Error('Only image files are allowed for profile pictures!'), false);
+        cb(new Error('Only image files (PNG/JPG) are allowed!'), false);
     }
 };
 
@@ -31,30 +32,40 @@ const upload = multer({
 
 // --- 2. AUTHENTICATION ROUTES ---
 
-// Signup
+// Signup GET
 router.get("/signup", authController.getSignupPage);
 
-// Signup POST with Multer error handling wrapper
+// Signup POST (Fixed Field Name and Error Handling)
 router.post("/signup", (req, res, next) => {
-    upload.single("avatar")(req, res, (err) => {
+    // CHANGED: 'avatar' to 'profilePicture' to match your EJS form field
+    upload.single("profilePicture")(req, res, (err) => {
         if (err instanceof multer.MulterError) {
-            return res.render("signup", { message: "Image too large. Please keep it under 2MB.", user: null });
+            // Handle Multer-specific errors (like file size)
+            return res.render("signup", { 
+                message: "Image is too large. Please upload a file under 2MB.", 
+                user: null 
+            });
         } else if (err) {
-            return res.render("signup", { message: err.message, user: null });
+            // Handle custom filter errors (like wrong file type)
+            return res.render("signup", { 
+                message: err.message, 
+                user: null 
+            });
         }
+        // If no upload errors, move to the controller logic
         next();
     });
 }, authController.postSignup);
-
-// Verification & OTP
-router.get("/verify-otp", authController.getVerifyPage);
-router.post("/verify-otp", authController.postVerifyOTP);
-router.post("/resend-otp", authController.postResendOTP);
 
 // Login & Logout
 router.get("/login", authController.getLoginPage);
 router.post("/login", authController.postLogin);
 router.get("/logout", authController.logout);
+
+// Verification & OTP
+router.get("/verify-otp", authController.getVerifyPage);
+router.post("/verify-otp", authController.postVerifyOTP);
+router.post("/resend-otp", authController.postResendOTP);
 
 // Password Reset Flow
 router.get("/forgot-password", authController.getForgotPasswordPage);
@@ -62,10 +73,6 @@ router.post("/forgot-password", authController.postForgotPassword);
 router.post("/reset-password", authController.postResetPassword);
 
 // --- 3. DEVELOPMENT HELPERS ---
-/**
- * Route to check session status during development.
- * Useful for debugging Login/Admin role issues.
- */
 router.get("/check-session", (req, res) => {
     res.json({
         hasUserInRequest: !!req.user,

@@ -5,15 +5,16 @@ const multer = require("multer");
 const adminController = require("../controllers/adminController");
 
 /**
- * Custom Middleware: isAdmin
- * Ensures only users with the 'admin' role can proceed.
+ * 1. Custom Middleware: isAdmin
+ * Ensure only authorized admins can access these routes.
  */
 const isAdmin = (req, res, next) => {
     if (req.user && req.user.role === 'admin') {
-        next();
+        return next();
     } else {
-        console.warn(`Unauthorized access attempt by: ${req.user ? req.user.email : 'Guest'}`);
-        res.status(403).render("404", { 
+        console.warn(`🚨 Unauthorized access attempt by: ${req.user ? req.user.email : 'Guest'}`);
+        // Redirecting to 404 with a specific message for security/access denial
+        return res.status(403).render("404", { 
             title: "Access Denied", 
             message: "You do not have permission to view the Command Center.",
             user: req.user || null,
@@ -22,10 +23,13 @@ const isAdmin = (req, res, next) => {
     }
 };
 
-// --- Multer Storage Configuration ---
+/**
+ * 2. Multer Storage Configuration
+ * Handles product image uploads with unique filenames.
+ */
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Ensures path compatibility across different OS environments
+        // process.cwd() ensures we start from the project root
         cb(null, path.join(process.cwd(), "public", "images")); 
     },
     filename: (req, file, cb) => {
@@ -50,22 +54,43 @@ const upload = multer({
 
 // --- ADMIN ROUTES ---
 
-// 1. Dashboard Core
+/**
+ * A. Dashboard Core (Supports Pagination)
+ * URL Example: /admin/dashboard?orderPage=1&productPage=2
+ */
 router.get("/dashboard", isAdmin, adminController.getDashboard);
 
-// 2. Inventory & Product Management
+/**
+ * B. Inventory & Product Management
+ */
+// Render form to add product
+router.get("/add-product", isAdmin, adminController.getAddProductPage); 
+
+// Logic to add product
+router.post("/products/add", isAdmin, upload.single("image"), adminController.addProduct);
+
+// AJAX route for stock updates
 router.post("/products/update-stock", isAdmin, adminController.updateStock);
-router.post("/add-product", isAdmin, upload.single("image"), adminController.addProduct);
+
+// Delete product route
 router.get("/delete-product/:id", isAdmin, adminController.deleteProduct);
 
-// 3. Order Management
-// Matches the AJAX URL in adminDashboard.ejs
+/**
+ * C. Order Management
+ */
+// AJAX route for order status (preparing, delivering, etc.)
 router.post("/orders/update-status", isAdmin, adminController.updateOrderStatus);
 
-// 4. Support Ticket Management
-// Matches the AJAX URL in adminDashboard.ejs
+/**
+ * D. Support Ticket Management
+ */
+// AJAX route for ticket status
 router.post("/support/update-status", isAdmin, adminController.updateSupportStatus);
+
+// Delete ticket
 router.get("/delete-support/:id", isAdmin, adminController.deleteSupport);
+
+// Reply to customer via Email
 router.post("/reply-support", isAdmin, adminController.replyToSupport);
 
 module.exports = router;

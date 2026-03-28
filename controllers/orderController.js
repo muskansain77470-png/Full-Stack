@@ -1,13 +1,13 @@
-const Order = require("../models/Order");
+const Order = require("../models/order"); // lowercase 'order' check karein model file name ke mutabik
 const Cart = require("../models/cart");
-const Product = require("../models/Product");
+const Product = require("../models/product");
 
 /**
  * 1. Create New Order (Checkout)
  */
 exports.createOrder = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = req.user._id; 
         const cart = await Cart.findOne({ userId }).populate("items.productId");
 
         if (!cart || cart.items.length === 0) {
@@ -15,52 +15,58 @@ exports.createOrder = async (req, res) => {
         }
 
         let calculatedTotal = 0;
-        const orderItems = cart.items.map(item => {
+        const orderItems = [];
+
+        // Validate items and check availability
+        for (const item of cart.items) {
             if (!item.productId) {
-                throw new Error("Some products are no longer available.");
+                return res.status(400).json({ success: false, message: "Some products in your cart are no longer available." });
             }
-            const itemPrice = item.productId.price;
-            calculatedTotal += (itemPrice * item.quantity);
-            
-            return {
+            if (item.productId.stock < item.quantity) {
+                return res.status(400).json({ success: false, message: `${item.productId.name} is out of stock!` });
+            }
+
+            calculatedTotal += (item.productId.price * item.quantity);
+            orderItems.push({
                 productId: item.productId._id,
                 quantity: item.quantity,
-                price: itemPrice
-            };
-        });
+                price: item.productId.price
+            });
+        }
 
         const newOrder = new Order({
-            user: userId,
+            user: userId, // Match your Schema field name
             items: orderItems,
             totalAmount: calculatedTotal,
-            status: "Pending",
-            displayDate: new Date().toLocaleDateString("en-IN")
+            status: "Pending"
         });
 
         await newOrder.save();
 
-        for (const item of cart.items) {
-            await Product.findByIdAndUpdate(
-                item.productId._id, 
-                { $inc: { stock: -item.quantity } }
-            );
-        }
+        // Atomic update for stock
+        const stockUpdates = cart.items.map(item => 
+            Product.findByIdAndUpdate(item.productId._id, { $inc: { stock: -item.quantity } })
+        );
+        await Promise.all(stockUpdates);
 
+        // Clear Cart
         await Cart.findOneAndDelete({ userId });
-        res.status(201).json({ success: true, message: "Order placed successfully!" });
+        
+        res.status(201).json({ success: true, message: "Order placed successfully! ☕" });
     } catch (err) {
         console.error("Order Placement Error:", err);
-        res.status(500).json({ success: false, message: err.message || "Server Error" });
+        res.status(500).json({ success: false, message: "Failed to place order." });
     }
 };
 
 /**
- * 2. FEATURE: Reorder Logic (CRITICAL: Added 'exports' here to fix the crash)
+ * 2. Reorder Logic
+ * Updated: Matches route parameter :orderId
  */
 exports.reorder = async (req, res) => {
     try {
-        const orderId = req.params.id;
-        const userId = req.user.id || req.user._id;
+        const { orderId } = req.params;
+        const userId = req.user._id;
 
         const oldOrder = await Order.findOne({ _id: orderId, user: userId }).populate("items.productId");
 
@@ -68,12 +74,12 @@ exports.reorder = async (req, res) => {
             return res.status(404).json({ success: false, message: "Original order not found!" });
         }
 
-        // Verify stock for reorder items
+        // Verify stock for all items first
         for (const item of oldOrder.items) {
             if (!item.productId || item.productId.stock < item.quantity) {
                 return res.status(400).json({ 
                     success: false, 
-                    message: `Item ${item.productId ? item.productId.name : 'Unknown'} is out of stock.` 
+                    message: `Item ${item.productId ? item.productId.name : 'Unknown'} is currently unavailable.` 
                 });
             }
         }
@@ -86,33 +92,32 @@ exports.reorder = async (req, res) => {
                 price: item.productId.price
             })),
             totalAmount: oldOrder.totalAmount,
-            status: "Pending",
-            displayDate: new Date().toLocaleDateString("en-IN")
+            status: "Pending"
         });
 
         await newOrder.save();
 
-        for (const item of oldOrder.items) {
-            await Product.findByIdAndUpdate(
-                item.productId._id,
-                { $inc: { stock: -item.quantity } }
-            );
-        }
+        // Update stock
+        const stockUpdates = oldOrder.items.map(item => 
+            Product.findByIdAndUpdate(item.productId._id, { $inc: { stock: -item.quantity } })
+        );
+        await Promise.all(stockUpdates);
 
-        res.json({ success: true, message: "Reorder successful!" });
+        res.json({ success: true, message: "Reordered successfully!" });
     } catch (err) {
         console.error("Reorder Error:", err);
-        res.status(500).json({ success: false, message: "Reorder failed on server." });
+        res.status(500).json({ success: false, message: "Server error during reorder." });
     }
 };
 
 /**
- * 3. FEATURE: Cancel Order
+ * 3. Cancel Order
+ * Updated: Matches route parameter :orderId
  */
 exports.cancelOrder = async (req, res) => {
     try {
-        const orderId = req.params.id;
-        const userId = req.user.id || req.user._id;
+        const { orderId } = req.params;
+        const userId = req.user._id;
 
         const order = await Order.findOne({ _id: orderId, user: userId });
 
@@ -120,46 +125,54 @@ exports.cancelOrder = async (req, res) => {
             return res.status(404).json({ success: false, message: "Order not found!" });
         }
 
-        if (order.status.toLowerCase() !== "pending") {
-            return res.status(400).json({ 
-                success: false, 
-                message: `Order status is '${order.status}', cannot cancel.` 
-            });
+        if (order.status !== "Pending") {
+            return res.status(400).json({ success: false, message: "Only pending orders can be cancelled." });
         }
 
-        for (const item of order.items) {
-            if (item.productId) {
-                await Product.findByIdAndUpdate(
-                    item.productId, 
-                    { $inc: { stock: item.quantity } }
-                );
-            }
-        }
+        // Restore stock
+        const restoreStock = order.items.map(item => 
+            Product.findByIdAndUpdate(item.productId, { $inc: { stock: item.quantity } })
+        );
+        await Promise.all(restoreStock);
 
         order.status = "Cancelled";
         await order.save();
 
         res.json({ success: true, message: "Order cancelled successfully!" });
     } catch (err) {
-        console.error("Cancel Error Detail:", err);
+        console.error("Cancel Error:", err);
         res.status(500).json({ success: false, message: "Cancellation failed." });
     }
 };
 
 /**
- * 4. User Orders Display
+ * 4. User Orders Display with PAGINATION
  */
 exports.getUserOrders = async (req, res) => {
     try {
-        const userId = req.user.id || req.user._id;
+        const userId = req.user._id;
         
+        // Pagination Logic
+        const page = Math.max(1, parseInt(req.query.page) || 1); 
+        const limit = 5; 
+        const skip = (page - 1) * limit;
+
+        const totalOrders = await Order.countDocuments({ user: userId });
+        const totalPages = Math.ceil(totalOrders / limit) || 1;
+
         const orders = await Order.find({ user: userId })
             .populate("items.productId")
             .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(limit)
             .lean();
 
+        // Format data for the view
         const formattedOrders = orders.map(order => ({
             ...order,
+            displayDate: new Date(order.createdAt).toLocaleString("en-IN", {
+                day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+            }),
             statusClass: 
                 order.status === "Pending" ? "bg-orange-100 text-orange-700" : 
                 order.status === "Delivered" ? "bg-green-100 text-green-700" : 
@@ -167,9 +180,24 @@ exports.getUserOrders = async (req, res) => {
                 "bg-blue-100 text-blue-700"
         }));
 
-        res.render("userOrders", { orders: formattedOrders, user: req.user });
+        res.render("userOrders", { 
+            title: "My Orders | FullStack Cafe",
+            orders: formattedOrders, 
+            user: req.user,
+            currentPage: page,
+            totalPages: totalPages,
+            hasPreviousPage: page > 1,
+            hasNextPage: page < totalPages,
+            nextPage: page + 1,
+            previousPage: page - 1
+        });
     } catch (err) {
         console.error("Order Page Error:", err);
-        res.status(500).send("Error loading orders page.");
+        res.status(500).render("404", { 
+            title: "Server Error",
+            message: "Error loading your orders.",
+            user: req.user || null,
+            cartCount: res.locals.cartCount || 0
+        });
     }
 };

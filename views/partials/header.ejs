@@ -68,10 +68,50 @@
   </nav>
 </header>
 
+<script src="/socket.io/socket.io.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
 <script>
 /**
+ * Real-time Order Notifications via Socket.io
+ */
+const socket = io();
+
+// Join private room if user is logged in
+<% if (locals.user) { %>
+    socket.emit('join', '<%= user._id || user.id %>');
+<% } %>
+
+// Listen for the 'order-status-update' event from the server
+socket.on('order-status-update', (data) => {
+    Swal.fire({
+        title: 'Cafe Update! ☕',
+        text: data.message,
+        icon: 'success',
+        toast: true,
+        position: 'top-end',
+        showConfirmButton: false,
+        timer: 6000,
+        timerProgressBar: true,
+        background: '#1e293b',
+        color: '#fff',
+        iconColor: '#f97316',
+        didOpen: (toast) => {
+            toast.addEventListener('mouseenter', Swal.stopTimer)
+            toast.addEventListener('mouseleave', Swal.resumeTimer)
+            // Play a subtle notification sound (optional)
+            // new Audio('/sounds/notification.mp3').play();
+        }
+    });
+
+    // Refresh order list automatically if user is on the My Orders page
+    if (window.location.pathname === '/orders/my-orders') {
+        setTimeout(() => location.reload(), 3000);
+    }
+});
+
+/**
  * Updates the cart badge visibility and count in real-time.
- * Accessible globally for AJAX updates in product/cart pages.
  */
 window.updateCartBadge = function(count) {
     const badge = document.getElementById('cart-count-badge');
@@ -82,7 +122,6 @@ window.updateCartBadge = function(count) {
         if (numCount > 0) {
             badge.classList.remove('hidden');
             badge.classList.add('flex');
-            // Pop animation
             badge.classList.add('scale-125');
             setTimeout(() => badge.classList.remove('scale-125'), 200);
         } else {
@@ -92,7 +131,6 @@ window.updateCartBadge = function(count) {
     }
 };
 
-// Initial state check on page load
 document.addEventListener('DOMContentLoaded', () => {
     const badge = document.getElementById('cart-count-badge');
     if (badge) {

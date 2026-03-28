@@ -5,7 +5,6 @@ const mongoose = require("mongoose");
 
 /**
  * Helper: Yeh function cart ke har item ki quantity ka SUM nikalta hai.
- * Example: Pizza (Qty: 2) + Rasmalai (Qty: 1) = Cart Count (3)
  */
 const calculateCartCount = (cart) => {
     if (!cart || !cart.items || !Array.isArray(cart.items) || cart.items.length === 0) {
@@ -17,16 +16,44 @@ const calculateCartCount = (cart) => {
     }, 0); 
 };
 
-// 1. Render Cart Page
+// 1. Render Cart Page with PAGINATION
 exports.getCartPage = async (req, res) => {
     try {
         const userId = req.user._id || req.user.id;
-        const cart = await Cart.findOne({ userId }).populate('items.productId');
         
+        // Pagination Logic
+        const page = parseInt(req.query.page) || 1;
+        const limit = 5; // Kitne unique items ek page par dikhane hain
+        const skip = (page - 1) * limit;
+
+        // Fetch the full cart to calculate total items and count
+        const fullCart = await Cart.findOne({ userId }).populate('items.productId');
+        
+        if (!fullCart || fullCart.items.length === 0) {
+            return res.render("cart", { 
+                user: req.user, 
+                cart: { items: [] },
+                cartCount: 0,
+                totalPages: 0,
+                currentPage: page,
+                title: "Shopping Bag | Full Stack Cafe"
+            });
+        }
+
+        // Manually slice items for pagination since items are an array inside the document
+        const paginatedItems = fullCart.items.slice(skip, skip + limit);
+        const totalPages = Math.ceil(fullCart.items.length / limit);
+
         res.render("cart", { 
             user: req.user, 
-            cart: cart || { items: [] },
-            cartCount: calculateCartCount(cart),
+            cart: { items: paginatedItems }, // Sirf current page ke items bhej rahe hain
+            cartCount: calculateCartCount(fullCart),
+            currentPage: page,
+            totalPages: totalPages,
+            hasNextPage: page < totalPages,
+            hasPreviousPage: page > 1,
+            nextPage: page + 1,
+            previousPage: page - 1,
             title: "Shopping Bag | Full Stack Cafe"
         });
     } catch (err) {
@@ -35,7 +62,7 @@ exports.getCartPage = async (req, res) => {
     }
 };
 
-// 2. Add Item to Cart (AJAX)
+// 2. Add Item to Cart (AJAX with Stock Check)
 exports.addToCart = async (req, res) => {
     try {
         const { productId } = req.body;
@@ -58,6 +85,9 @@ exports.addToCart = async (req, res) => {
             const itemIndex = cart.items.findIndex(i => i.productId && i.productId.toString() === productId.toString());
             
             if (itemIndex > -1) { 
+                if (cart.items[itemIndex].quantity + 1 > product.stock) {
+                    return res.status(400).json({ success: false, message: "Limit reached based on available stock." });
+                }
                 cart.items[itemIndex].quantity += 1; 
             } else { 
                 cart.items.push({ productId, quantity: 1 }); 
@@ -72,41 +102,46 @@ exports.addToCart = async (req, res) => {
     }
 };
 
-// 3. Update Quantity (AJAX) - FIXED FOR VALIDATION ERROR
+// 3. Update Quantity (AJAX with Stock Check)
 exports.updateQuantity = async (req, res) => {
     try {
-        const { productId, action } = req.body;
+        const { productId, change } = req.body; 
         const userId = req.user._id || req.user.id;
         
         if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
 
-        let cart = await Cart.findOne({ userId });
+        let cart = await Cart.findOne({ userId }).populate('items.productId');
         if (!cart) return res.status(404).json({ success: false, cartCount: 0 });
 
-        const itemIndex = cart.items.findIndex(i => i.productId && i.productId.toString() === productId.toString());
+        const itemIndex = cart.items.findIndex(i => i.productId && i.productId._id.toString() === productId.toString());
 
         if (itemIndex > -1) {
-            if (action === 'increase') {
-                cart.items[itemIndex].quantity += 1;
-            } else if (action === 'decrease' && cart.items[itemIndex].quantity > 1) {
-                cart.items[itemIndex].quantity -= 1;
+            const product = cart.items[itemIndex].productId;
+            const currentQty = cart.items[itemIndex].quantity;
+            const newQty = currentQty + change;
+
+            if (change > 0 && newQty > product.stock) {
+                return res.status(400).json({ 
+                    success: false, 
+                    message: `Only ${product.stock} items available.` 
+                });
             }
 
-            // CRITICAL FIX: Explicitly setting userId again to prevent "userId is required" validation error
-            cart.userId = userId; 
+            if (newQty > 0) {
+                cart.items[itemIndex].quantity = newQty;
+            } else {
+                cart.items.splice(itemIndex, 1);
+            }
             await cart.save();
         }
 
-        const totalItemsCount = calculateCartCount(cart);
-
         res.json({ 
             success: true, 
-            cartCount: totalItemsCount, // Updates navbar badge to (3) if total qty is 3
-            newQuantity: cart.items[itemIndex].quantity 
+            cartCount: calculateCartCount(cart)
         });
     } catch (err) {
         console.error("Update Qty Error:", err.message);
-        res.status(500).json({ success: false, message: "Database error", cartCount: 0 });
+        res.status(500).json({ success: false, message: "Database error" });
     }
 };
 
@@ -134,17 +169,24 @@ exports.reorder = async (req, res) => {
         const { orderId } = req.body;
         const userId = req.user._id || req.user.id;
 
-        const pastOrder = await Order.findById(orderId);
+        const pastOrder = await Order.findById(orderId).populate('items.productId');
         if (!pastOrder) return res.status(404).json({ success: false, message: "Order not found" });
 
         let cart = await Cart.findOne({ userId }) || new Cart({ userId: userId, items: [] });
 
         for (const item of pastOrder.items) {
-            const itemIndex = cart.items.findIndex(i => i.productId.toString() === item.productId.toString());
+            const product = item.productId;
+            if (!product || product.stock <= 0) continue;
+
+            const itemIndex = cart.items.findIndex(i => i.productId.toString() === product._id.toString());
+            const requestedQty = item.quantity || 1;
+            
             if (itemIndex > -1) {
-                cart.items[itemIndex].quantity += (item.quantity || 1);
+                const totalPossible = Math.min(cart.items[itemIndex].quantity + requestedQty, product.stock);
+                cart.items[itemIndex].quantity = totalPossible;
             } else {
-                cart.items.push({ productId: item.productId, quantity: (item.quantity || 1) });
+                const totalPossible = Math.min(requestedQty, product.stock);
+                cart.items.push({ productId: product._id, quantity: totalPossible });
             }
         }
 

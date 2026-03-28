@@ -25,4 +25,11 @@ const cartSchema = new mongoose.Schema({
   timestamps: true // Isse createdAt aur updatedAt automatically ban jayenge
 });
 
-module.exports = mongoose.model("Cart", cartSchema);
+/**
+ * FIXED: OverwriteModelError Fix
+ * Agar 'Cart' model pehle se register hai toh wahi use hoga, 
+ * warna naya compile hoga.
+ */
+const Cart = mongoose.models.Cart || mongoose.model("Cart", cartSchema);
+
+module.exports = Cart;
