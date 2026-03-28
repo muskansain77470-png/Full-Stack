@@ -1,6 +1,6 @@
-const Order = require("../models/order"); // lowercase 'order' check karein model file name ke mutabik
+const Order = require("../models/Order"); 
 const Cart = require("../models/cart");
-const Product = require("../models/product");
+const Product = require("../models/Product");
 
 /**
  * 1. Create New Order (Checkout)
