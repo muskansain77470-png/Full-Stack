@@ -7,7 +7,6 @@ const authController = require("../controllers/authController");
 // --- 1. MULTER CONFIGURATION ---
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        // Ensure this folder exists: public/images
         cb(null, path.join(process.cwd(), "public", "images")); 
     },
     filename: (req, file, cb) => {
@@ -20,64 +19,57 @@ const fileFilter = (req, file, cb) => {
     if (file && file.mimetype.startsWith('image/')) {
         cb(null, true);
     } else {
-        cb(new Error('Only image files (PNG/JPG) are allowed!'), false);
+        cb(new Error('Only image files (PNG/JPG/JPEG) are allowed!'), false);
     }
 };
 
 const upload = multer({ 
     storage: storage,
     fileFilter: fileFilter,
-    limits: { fileSize: 2 * 1024 * 1024 } // 2MB Limit
+    limits: { fileSize: 5 * 1024 * 1024 } // 5MB Limit
 });
 
 // --- 2. AUTHENTICATION ROUTES ---
 
-// Signup GET
+// Render Pages (GET)
 router.get("/signup", authController.getSignupPage);
+router.get("/login", authController.getLoginPage);
+router.get("/logout", authController.logout);
+router.get("/verify-otp", authController.getVerifyPage);
+router.get("/forgot-password", authController.getForgotPasswordPage);
 
-// Signup POST (Fixed Field Name and Error Handling)
+// Logic Routes (POST) - FIXED FOR JSON/FETCH
+
+// Signup with Multer Error Handling FIXED
 router.post("/signup", (req, res, next) => {
-    // CHANGED: 'avatar' to 'profilePicture' to match your EJS form field
     upload.single("profilePicture")(req, res, (err) => {
         if (err instanceof multer.MulterError) {
-            // Handle Multer-specific errors (like file size)
-            return res.render("signup", { 
-                message: "Image is too large. Please upload a file under 2MB.", 
-                user: null 
-            });
+            let errorMsg = "Image too large. Max 5MB allowed.";
+            if (err.code === 'LIMIT_UNEXPECTED_FILE') errorMsg = "Field name mismatch.";
+            // FIXED: Sending JSON instead of res.render
+            return res.status(400).json({ success: false, message: errorMsg });
         } else if (err) {
-            // Handle custom filter errors (like wrong file type)
-            return res.render("signup", { 
-                message: err.message, 
-                user: null 
-            });
+            return res.status(400).json({ success: false, message: err.message });
         }
-        // If no upload errors, move to the controller logic
         next();
     });
 }, authController.postSignup);
 
-// Login & Logout
-router.get("/login", authController.getLoginPage);
+// Login
 router.post("/login", authController.postLogin);
-router.get("/logout", authController.logout);
 
 // Verification & OTP
-router.get("/verify-otp", authController.getVerifyPage);
 router.post("/verify-otp", authController.postVerifyOTP);
 router.post("/resend-otp", authController.postResendOTP);
 
-// Password Reset Flow
-router.get("/forgot-password", authController.getForgotPasswordPage);
+// Password Reset
 router.post("/forgot-password", authController.postForgotPassword);
 router.post("/reset-password", authController.postResetPassword);
 
-// --- 3. DEVELOPMENT HELPERS ---
+// Development Helpers
 router.get("/check-session", (req, res) => {
     res.json({
-        hasUserInRequest: !!req.user,
         user: req.user || "No user detected",
-        session: req.session,
         cookies: req.cookies
     });
 });

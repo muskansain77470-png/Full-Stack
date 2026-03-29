@@ -1,17 +1,24 @@
-const Order = require("../models/Order"); 
-const Cart = require("../models/cart");
+const Order = require("../models/Order"); // FIXED: Capital 'O' for Render/Linux compatibility
+const Cart = require("../models/Cart");   // FIXED: Capital 'C'
 const Product = require("../models/Product");
 
 /**
  * 1. Create New Order (Checkout)
+ * Logic: Validate Cart -> Check Stock -> Create Order -> Atomic Stock Update -> Clear Cart
  */
 exports.createOrder = async (req, res) => {
     try {
         const userId = req.user._id; 
+        
+        // Find cart and ensure items are populated correctly
         const cart = await Cart.findOne({ userId }).populate("items.productId");
 
-        if (!cart || cart.items.length === 0) {
-            return res.status(400).json({ success: false, message: "Cart is empty!" });
+        // Check if cart exists and has items
+        if (!cart || !cart.items || cart.items.length === 0) {
+            return res.status(400).json({ 
+                success: false, 
+                message: "Cart is empty! Please add items before placing an order." 
+            });
         }
 
         let calculatedTotal = 0;
@@ -19,11 +26,20 @@ exports.createOrder = async (req, res) => {
 
         // Validate items and check availability
         for (const item of cart.items) {
+            // Check if product still exists in DB
             if (!item.productId) {
-                return res.status(400).json({ success: false, message: "Some products in your cart are no longer available." });
+                return res.status(400).json({ 
+                    success: false, 
+                    message: "One or more products in your cart are no longer available." 
+                });
             }
+
+            // Check stock availability
             if (item.productId.stock < item.quantity) {
-                return res.status(400).json({ success: false, message: `${item.productId.name} is out of stock!` });
+                return res.status(400).json({ 
+                    success: false, 
+                    message: `Sorry, ${item.productId.name} is out of stock (Available: ${item.productId.stock}).` 
+                });
             }
 
             calculatedTotal += (item.productId.price * item.quantity);
@@ -34,8 +50,9 @@ exports.createOrder = async (req, res) => {
             });
         }
 
+        // Create Order Instance
         const newOrder = new Order({
-            user: userId, // Match your Schema field name
+            user: userId,
             items: orderItems,
             totalAmount: calculatedTotal,
             status: "Pending"
@@ -43,25 +60,34 @@ exports.createOrder = async (req, res) => {
 
         await newOrder.save();
 
-        // Atomic update for stock
+        // Atomic update for stock: Reduce stock for each product
         const stockUpdates = cart.items.map(item => 
-            Product.findByIdAndUpdate(item.productId._id, { $inc: { stock: -item.quantity } })
+            Product.findByIdAndUpdate(
+                item.productId._id, 
+                { $inc: { stock: -item.quantity } }
+            )
         );
         await Promise.all(stockUpdates);
 
-        // Clear Cart
+        // Clear Cart after successful order
         await Cart.findOneAndDelete({ userId });
         
-        res.status(201).json({ success: true, message: "Order placed successfully! ☕" });
+        res.status(201).json({ 
+            success: true, 
+            message: "Order placed successfully! Your food is being prepared. ☕" 
+        });
+
     } catch (err) {
         console.error("Order Placement Error:", err);
-        res.status(500).json({ success: false, message: "Failed to place order." });
+        res.status(500).json({ 
+            success: false, 
+            message: "Failed to place order due to a server error." 
+        });
     }
 };
 
 /**
  * 2. Reorder Logic
- * Updated: Matches route parameter :orderId
  */
 exports.reorder = async (req, res) => {
     try {
@@ -112,7 +138,6 @@ exports.reorder = async (req, res) => {
 
 /**
  * 3. Cancel Order
- * Updated: Matches route parameter :orderId
  */
 exports.cancelOrder = async (req, res) => {
     try {
@@ -152,7 +177,6 @@ exports.getUserOrders = async (req, res) => {
     try {
         const userId = req.user._id;
         
-        // Pagination Logic
         const page = Math.max(1, parseInt(req.query.page) || 1); 
         const limit = 5; 
         const skip = (page - 1) * limit;
@@ -167,7 +191,6 @@ exports.getUserOrders = async (req, res) => {
             .limit(limit)
             .lean();
 
-        // Format data for the view
         const formattedOrders = orders.map(order => ({
             ...order,
             displayDate: new Date(order.createdAt).toLocaleString("en-IN", {
@@ -197,7 +220,7 @@ exports.getUserOrders = async (req, res) => {
             title: "Server Error",
             message: "Error loading your orders.",
             user: req.user || null,
-            cartCount: res.locals.cartCount || 0
+            cartCount: 0
         });
     }
 };

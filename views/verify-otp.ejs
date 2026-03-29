@@ -40,7 +40,7 @@
         <div class="mt-8 pt-6 border-t border-slate-50">
             <div id="resend-container">
                 <p id="timer-text" class="text-xs font-bold text-slate-400 uppercase tracking-tighter">
-                    Resend code in <span id="timer" class="text-slate-900">00:59</span>
+                    Resend code in <span id="timer" class="text-slate-900">10:00</span>
                 </p>
                 
                 <button type="button" id="resendBtn" class="hidden text-xs font-black text-slate-900 uppercase underline decoration-2 underline-offset-4 hover:text-blue-600 transition-colors">
@@ -56,13 +56,40 @@
         const btnText = document.getElementById('btnText');
         const msgDiv = document.getElementById('msgDiv');
         const otpInput = document.getElementById('otp-input');
+        const resendBtn = document.getElementById('resendBtn');
+        const timerSpan = document.getElementById('timer');
+        const timerText = document.getElementById('timer-text');
 
-        // 1. Handle Verification Submit
+        let timeLeft = 600; // 10 minutes (backend sync)
+        let timerId;
+
+        // 1. Timer Function
+        function startTimer() {
+            clearInterval(timerId);
+            timerId = setInterval(() => {
+                if (timeLeft <= 0) {
+                    clearInterval(timerId);
+                    timerText.classList.add('hidden');
+                    resendBtn.classList.remove('hidden');
+                } else {
+                    const minutes = Math.floor(timeLeft / 60);
+                    const seconds = timeLeft % 60;
+                    timerSpan.innerText = `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+                    timeLeft--;
+                }
+            }, 1000);
+        }
+
+        // Start timer on page load
+        startTimer();
+
+        // 2. Handle Verification Submit
         verifyForm.addEventListener('submit', async (e) => {
             e.preventDefault();
             
             submitBtn.disabled = true;
             btnText.innerText = 'Verifying...';
+            msgDiv.classList.add('hidden');
 
             const payload = {
                 email: document.getElementById('email').value,
@@ -77,66 +104,53 @@
                     body: JSON.stringify(payload)
                 });
 
-                // If your controller returns HTML (res.render), fetch handles it like this:
-                if (response.redirected) {
-                    window.location.href = response.url;
-                    return;
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    window.location.href = result.redirectUrl;
+                } else {
+                    throw new Error(result.message || "Invalid OTP");
                 }
 
-                const result = await response.text();
-                // If it didn't redirect, it likely rendered the page again with an error. 
-                // We replace the current document with the error page returned.
-                document.open();
-                document.write(result);
-                document.close();
-
             } catch (err) {
-                msgDiv.innerText = "Connection Error";
+                msgDiv.innerText = err.message;
                 msgDiv.className = "mb-4 p-3 rounded-xl bg-red-50 text-red-600 text-xs font-bold uppercase block";
                 submitBtn.disabled = false;
                 btnText.innerText = 'Verify Account';
             }
         });
 
-        // 2. Timer & Resend Logic
-        let timeLeft = 59;
-        const timerSpan = document.getElementById('timer');
-        const timerText = document.getElementById('timer-text');
-        const resendBtn = document.getElementById('resendBtn');
-
-        const countdown = setInterval(() => {
-            if (timeLeft <= 0) {
-                clearInterval(countdown);
-                timerText.classList.add('hidden');
-                resendBtn.classList.remove('hidden');
-            } else {
-                timerSpan.innerHTML = `00:${timeLeft < 10 ? '0' : ''}${timeLeft}`;
-                timeLeft -= 1;
-            }
-        }, 1000);
-
         // 3. Resend OTP Fetch
         resendBtn.addEventListener('click', async () => {
             const email = document.getElementById('email').value;
-            const type = document.getElementById('type').value;
 
             try {
                 const response = await fetch('/resend-otp', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, type })
+                    body: JSON.stringify({ email })
                 });
                 
-                const result = await response.text();
-                document.open();
-                document.write(result);
-                document.close();
+                const result = await response.json();
+
+                if (response.ok && result.success) {
+                    // Reset UI for new OTP
+                    timeLeft = 600; 
+                    resendBtn.classList.add('hidden');
+                    timerText.classList.remove('hidden');
+                    startTimer();
+                    
+                    msgDiv.innerText = "New OTP Sent!";
+                    msgDiv.className = "mb-4 p-3 rounded-xl bg-green-50 text-green-600 text-xs font-bold uppercase block";
+                } else {
+                    throw new Error(result.message);
+                }
             } catch (err) {
-                alert("Failed to resend code.");
+                alert(err.message || "Failed to resend code.");
             }
         });
 
-        // 4. Input UX
+        // 4. Input UX: Numbers only
         otpInput.addEventListener('input', function() {
             this.value = this.value.replace(/[^0-9]/g, '');
         });

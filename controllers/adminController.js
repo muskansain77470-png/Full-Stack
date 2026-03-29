@@ -5,9 +5,6 @@ const fs = require("fs");
 const path = require("path");
 const nodemailer = require("nodemailer");
 
-/**
- * 1. Admin Dashboard with Pagination (FIXED PATHS)
- */
 exports.getDashboard = async (req, res) => {
     try {
         const limit = 10; 
@@ -24,7 +21,6 @@ exports.getDashboard = async (req, res) => {
             Support.countDocuments()
         ]);
 
-        // Null check for user data
         const validOrders = (orders || []).map(order => ({
             ...order,
             user: order.user || { username: "Guest User", email: "N/A", phone: "No Contact" }
@@ -37,35 +33,16 @@ exports.getDashboard = async (req, res) => {
             orders: validOrders,
             supports: supports || [],
             pagination: { 
-                orders: {
-                    current: orderPage,
-                    total: Math.ceil(totalOrders / limit) || 1,
-                    hasPrev: orderPage > 1,
-                    hasNext: orderPage < Math.ceil(totalOrders / limit)
-                },
-                products: {
-                    current: productPage,
-                    total: Math.ceil(totalProducts / limit) || 1,
-                    hasPrev: productPage > 1,
-                    hasNext: productPage < Math.ceil(totalProducts / limit)
-                },
-                supports: {
-                    current: supportPage,
-                    total: Math.ceil(totalSupports / limit) || 1,
-                    hasPrev: supportPage > 1,
-                    hasNext: supportPage < Math.ceil(totalSupports / limit)
-                }
+                orders: { current: orderPage, total: Math.ceil(totalOrders / limit) || 1 },
+                products: { current: productPage, total: Math.ceil(totalProducts / limit) || 1 },
+                supports: { current: supportPage, total: Math.ceil(totalSupports / limit) || 1 }
             }
         });
     } catch (err) {
-        console.error("Dashboard Error:", err);
         res.status(500).send("Critical Error loading dashboard.");
     }
 };
 
-/**
- * 2. Product Management
- */
 exports.getAddProductPage = (req, res) => {
     res.render("add-product", { title: "Add Product", user: req.user, cartCount: 0 });
 };
@@ -82,7 +59,7 @@ exports.addProduct = async (req, res) => {
         await newProduct.save();
         res.redirect("/admin/dashboard"); 
     } catch (err) {
-        res.status(500).json({ success: false, message: "Failed to save product" });
+        res.status(500).send("Failed to save product");
     }
 };
 
@@ -110,9 +87,6 @@ exports.deleteProduct = async (req, res) => {
     }
 };
 
-/**
- * 3. Order & Support Logic
- */
 exports.updateOrderStatus = async (req, res) => {
     try {
         const { orderId, status } = req.body;
@@ -123,6 +97,7 @@ exports.updateOrderStatus = async (req, res) => {
     }
 };
 
+// FIXED: This was missing and causing the crash
 exports.updateSupportStatus = async (req, res) => {
     try {
         const { supportId, status } = req.body;

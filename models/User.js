@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const bcrypt = require("bcryptjs");
 
 const userSchema = new mongoose.Schema(
   {
@@ -24,7 +25,7 @@ const userSchema = new mongoose.Schema(
     password: {
       type: String,
       required: [true, "Password is required"],
-      select: false, // Hidden by default for security
+      select: false, // Security: Query mein password default mein nahi aayega
     },
     avatar: {
       type: String,
@@ -50,12 +51,43 @@ const userSchema = new mongoose.Schema(
     },
   },
   { 
-    timestamps: true,
+    timestamps: true, 
     toJSON: { virtuals: true }, 
     toObject: { virtuals: true }
   }
 );
 
+/**
+ * 1. Password Hashing Middleware
+ * FIXED: 'next' parameter ko remove kiya gaya hai kyunki async function 
+ * automatically promise return karta hai.
+ */
+userSchema.pre("save", async function () {
+  // Username spaces remove logic (Bina space wala username backend stability ke liye acha hai)
+  if (this.isModified("username")) {
+    this.username = this.username.replace(/\s+/g, "");
+  }
+
+  // Password hashing logic
+  if (this.isModified("password")) {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+  }
+  // Yahan next() call karne ki zaroorat nahi hai
+});
+
+/**
+ * 2. Helper Method: Password match check karne ke liye
+ * Controller ise login ke waqt use karega
+ */
+userSchema.methods.comparePassword = async function (enteredPassword) {
+  // this.password tabhi milega jab controller mein .select("+password") use kiya ho
+  return await bcrypt.compare(enteredPassword, this.password);
+};
+
+/**
+ * 3. Virtual field to check if user is admin
+ */
 userSchema.virtual('isAdmin').get(function() {
   return this.role === 'admin';
 });

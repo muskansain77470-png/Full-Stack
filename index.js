@@ -19,7 +19,7 @@ const cartRoutes = require("./routes/cartRoutes");
 
 // --- Middleware & Model Imports ---
 const extractUser = require("./middlewares/extractUser");
-const Cart = require("./models/cart"); 
+const Cart = require("./models/Cart"); 
 
 const app = express();
 const server = http.createServer(app); 
@@ -62,7 +62,7 @@ app.use(session({
 // Serving static files from 'public' folder
 app.use(express.static(path.join(__dirname, "public")));
 
-// Extract User info from JWT (Humesha static ke baad aur cart logic se pehle)
+// Extract User info from JWT
 app.use(extractUser);
 
 /**
@@ -77,18 +77,15 @@ app.use(async (req, res, next) => {
     res.locals.email = req.query.email || "";
     res.locals.type = req.query.type || "signup";
 
-    // Skip cart logic for static files and auth routes to save DB calls
+    // Optimization: Skip cart logic for static files and auth routes
     const isStatic = /\.(jpg|jpeg|png|gif|css|js|ico|svg|woff2|map|webp|avif)$/i.test(req.path);
     const isAuthPath = ['/login', '/signup', '/logout', '/verify-otp'].includes(req.path);
 
     if (!isStatic && !isAuthPath && req.user && req.user.role !== 'admin') {
         try {
-            const rawId = req.user._id || req.user.id;
-            if (rawId && mongoose.Types.ObjectId.isValid(rawId)) {
-                const userId = new mongoose.Types.ObjectId(rawId);
-                // Fetch cart and calculate total quantity
+            const userId = req.user._id || req.user.id;
+            if (userId && mongoose.Types.ObjectId.isValid(userId)) {
                 const userCart = await Cart.findOne({ userId }).lean();
-                
                 if (userCart && userCart.items) {
                     res.locals.cartCount = userCart.items.reduce((total, item) => total + (Number(item.quantity) || 0), 0);
                 }
@@ -112,8 +109,6 @@ io.on("connection", (socket) => {
 /**
  * 6. Route Mounting
  */
-
-// Root Redirect Logic
 app.get("/", (req, res) => {
     if (req.user) {
         return req.user.role === 'admin' ? res.redirect("/admin/dashboard") : res.redirect("/products");
@@ -129,10 +124,16 @@ app.use("/support", supportRoutes);
 app.use("/", authRoutes); 
 
 /**
- * 7. 404 Error Handling
+ * 7. 404 Error Handling (FIXED: Handling JSON vs HTML)
  */
 app.use((req, res) => {
-    res.status(404).render("404", { 
+    const status = 404;
+    // Agar fetch request hai toh JSON bhejo
+    if (req.xhr || req.headers.accept.indexOf('json') > -1) {
+        return res.status(status).json({ success: false, message: "Route not found" });
+    }
+    // Normal browser request ke liye render karo
+    res.status(status).render("404", { 
         title: "404 - Not Found", 
         message: "The page you are looking for doesn't exist.",
         user: req.user || null,
@@ -141,20 +142,23 @@ app.use((req, res) => {
 });
 
 /**
- * 8. Global 500 Error Handling
+ * 8. Global 500 Error Handling (FIXED: Robust JSON response)
  */
 app.use((err, req, res, next) => {
     console.error("CRITICAL ERROR:", err.stack);
-    
     const status = err.status || 500;
 
-    // API Response if needed
-    if (req.xhr || (req.headers.accept && req.headers.accept.indexOf('json') > -1)) {
-        return res.status(status).json({ success: false, message: "Internal Server Error" });
+    // JSON detection for Fetch/AJAX calls
+    const isApiRequest = req.xhr || (req.headers.accept && req.headers.accept.indexOf('json') > -1) || req.path.startsWith('/signup') || req.path.startsWith('/login');
+
+    if (isApiRequest) {
+        return res.status(status).json({ 
+            success: false, 
+            message: err.message || "Internal Server Error" 
+        });
     }
 
     try {
-        // Render 404/Error page safely
         res.status(status).render("404", { 
             title: status === 500 ? "Server Error" : "Not Found",
             message: status === 500 ? "Our chefs are fixing the server!" : "Page not found.",
@@ -162,7 +166,7 @@ app.use((err, req, res, next) => {
             cartCount: res.locals.cartCount || 0
         });
     } catch (renderError) {
-        res.status(500).send("Internal Server Error - Check Console");
+        res.status(500).send("Something went wrong. Please check back later.");
     }
 });
 
@@ -174,7 +178,6 @@ server.listen(PORT, () => {
     console.log(`🚀 FullStack Cafe is live at: http://localhost:${PORT}`);
 });
 
-// Handling server-wide unhandled rejections
 process.on("unhandledRejection", (err) => {
     console.error(`Unhandled Rejection: ${err.message}`);
     server.close(() => process.exit(1));
