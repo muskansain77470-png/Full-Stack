@@ -1,35 +1,36 @@
 const express = require("express");
 const router = express.Router();
 const orderController = require("../controllers/orderController");
-const { isAuthenticated } = require("../middlewares/auth");
+
+// Middleware: Ensure user is logged in
+const { isAuthenticated } = require("../middlewares/auth"); 
 
 /**
- * Route: View all orders (Main Route for pagination)
- * URL: GET /orders?page=1
- */
-router.get("/", isAuthenticated, orderController.getUserOrders);
-
-/**
- * Route: View all orders for the logged-in user (Alias)
- * URL: GET /orders/my-orders
+ * @route   GET /orders/my-orders
+ * @desc    Display the orders page for the logged-in user
  */
 router.get("/my-orders", isAuthenticated, orderController.getUserOrders);
 
 /**
- * Route: Place a new order from the cart (Checkout)
+ * @route   POST /orders/checkout
+ * @desc    Create a new order from cart
  */
 router.post("/checkout", isAuthenticated, orderController.createOrder);
 
 /**
- * Route: Reorder a previous order
- * Updated :id to :orderId to match controller/frontend
+ * @route   POST /orders/reorder/:orderId
+ * @desc    Reorder a previous transaction (Restores items to cart)
  */
 router.post("/reorder/:orderId", isAuthenticated, orderController.reorder);
 
 /**
- * Route: Cancel an existing pending order
- * Updated :id to :orderId to match controller/frontend
+ * @route   POST /orders/cancel/:orderId
+ * @desc    Cancel a pending order and restore stock
+ * NOTE: Agar fetch API se problem aa rahi hai, toh ensure karein ki frontend POST hi bhej raha hai.
  */
 router.post("/cancel/:orderId", isAuthenticated, orderController.cancelOrder);
+
+// Backup Route (Sirf tab use karein agar frontend POST request handle nahi kar pa raha)
+// router.get("/cancel/:orderId", isAuthenticated, orderController.cancelOrder);
 
 module.exports = router;

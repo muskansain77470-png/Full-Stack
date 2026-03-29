@@ -6,9 +6,12 @@
     <title>Your Bag | FullStack Cafe</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap');
+        body { font-family: 'Inter', sans-serif; }
         .cart-item-row { transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
         .cart-item-row.removing { 
             opacity: 0; 
@@ -19,15 +22,10 @@
             margin: 0;
             overflow: hidden; 
         }
-        .glass-effect {
-            background: rgba(255, 255, 255, 0.8);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
     </style>
 </head>
 <body class="bg-[#f8fafc] text-gray-900 font-sans antialiased">
-    <%- include('partials/header') %>
+    <%- include('./partials/header') %>
 
     <main class="max-w-4xl mx-auto px-4 py-12">
         <div class="flex items-center justify-between mb-10">
@@ -48,12 +46,10 @@
                                 
                                 <div class="relative group cursor-pointer">
                                     <div class="overflow-hidden rounded-[2rem] w-28 h-28 shadow-lg group-hover:shadow-orange-200/50 transition-all duration-500 border-4 border-white">
-                                        <img src="/images/<%= item.productId.image %>" 
+                                        <% let imagePath = item.productId.image ? (item.productId.image.startsWith('http') ? item.productId.image : (item.productId.image.startsWith('/images/') ? item.productId.image : '/images/' + item.productId.image)) : '/images/default-food.png'; %>
+                                        <img src="<%= imagePath %>" 
                                              class="w-full h-full object-cover transform group-hover:scale-110 transition-transform duration-700" 
-                                             onerror="this.src='https://placehold.co/150x150?text=Delicious+Food'">
-                                    </div>
-                                    <div class="absolute -top-2 -right-2 bg-orange-600 text-white text-[8px] font-black px-2.5 py-1 rounded-full opacity-0 group-hover:opacity-100 transition-all duration-300 shadow-xl uppercase tracking-widest">
-                                        Fresh
+                                             onerror="this.src='https://placehold.co/150x150?text=FullStack+Cafe'">
                                     </div>
                                 </div>
 
@@ -80,9 +76,9 @@
                         <% }) %>
                     </div>
 
-                    <% if (locals.totalPages > 1) { %>
+                    <% if (locals.totalPages && totalPages > 1) { %>
                         <div class="px-10 py-6 bg-slate-50/50 border-t border-slate-100 flex justify-between items-center">
-                            <% if (locals.hasPreviousPage) { %>
+                            <% if (hasPreviousPage) { %>
                                 <a href="/cart?page=<%= previousPage %>" class="text-[10px] font-black text-slate-400 hover:text-slate-900 flex items-center gap-3 transition-all tracking-widest uppercase">
                                     <i class="fas fa-chevron-left"></i> Prev
                                 </a>
@@ -96,7 +92,7 @@
                                 <% } %>
                             </div>
 
-                            <% if (locals.hasNextPage) { %>
+                            <% if (hasNextPage) { %>
                                 <a href="/cart?page=<%= nextPage %>" class="text-[10px] font-black text-slate-400 hover:text-slate-900 flex items-center gap-3 transition-all tracking-widest uppercase">
                                     Next <i class="fas fa-chevron-right"></i>
                                 </a>
@@ -131,10 +127,9 @@
         </div>
     </main>
 
-    <%- include('partials/footer') %>
+    <%- include('./partials/footer') %>
 
     <script>
-    // 1. Confetti Animation Function
     function celebrate() {
         confetti({
             particleCount: 150,
@@ -144,7 +139,6 @@
         });
     }
 
-    // 2. Update Total UI
     function updateCartTotalUI() {
         let total = 0;
         const items = document.querySelectorAll('.cart-item-row:not(.removing)');
@@ -157,7 +151,6 @@
         if (items.length === 0) setTimeout(() => location.reload(), 500);
     }
 
-    // 3. Update Quantity AJAX
     async function updateQuantity(productId, change) {
         const qtySpan = document.getElementById(`qty-${productId}`);
         const stockEl = document.getElementById(`stock-${productId}`);
@@ -165,7 +158,15 @@
         let currentQty = parseInt(qtySpan.innerText);
 
         if (change === 1 && currentQty >= stockLimit) {
-            Swal.fire({ icon: 'warning', title: 'Out of Stock', text: `Only ${stockLimit} left!`, toast: true, position: 'top' });
+            Swal.fire({ 
+                icon: 'warning', 
+                title: 'Limited Stock', 
+                text: `Only ${stockLimit} units available.`, 
+                toast: true, 
+                position: 'top-end',
+                showConfirmButton: false,
+                timer: 3000
+            });
             return;
         }
 
@@ -190,15 +191,16 @@
         } catch (err) { console.error("Update Error:", err); }
     }
 
-    // 4. Remove Item AJAX
     async function removeItem(productId) {
         const result = await Swal.fire({
-            title: 'Remove Item?',
-            text: "This will remove the item from your bag.",
-            icon: 'question',
+            title: 'Remove from Bag?',
+            text: "Are you sure you want to remove this item?",
+            icon: 'warning',
             showCancelButton: true,
             confirmButtonColor: '#ea580c',
-            confirmButtonText: 'Yes, remove it!'
+            cancelButtonColor: '#1e293b',
+            confirmButtonText: 'Yes, remove it!',
+            customClass: { popup: 'rounded-[2rem]' }
         });
 
         if (result.isConfirmed) {
@@ -225,38 +227,38 @@
         }
     }
 
-    // 5. Checkout & Celebrate
     async function processCheckout() {
         const btn = document.getElementById('checkout-btn');
+        const originalText = btn.innerHTML;
+        
         btn.disabled = true;
-        btn.innerText = "Processing...";
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i> Processing...';
 
         try {
             const res = await fetch('/orders/checkout', { method: 'POST' });
             const data = await res.json();
             
             if (data.success) {
-                celebrate(); // FIREWORKS!
-                setTimeout(() => {
-                    Swal.fire({
-                        title: 'Success!',
-                        text: 'Order placed successfully. Redirecting to your orders...',
-                        icon: 'success',
-                        timer: 2000,
-                        showConfirmButton: false
-                    }).then(() => {
-                        window.location.href = '/orders/my-orders';
-                    });
-                }, 500);
+                celebrate();
+                Swal.fire({
+                    title: '☕ Order Placed!',
+                    text: 'Your caffeine is on the way.',
+                    icon: 'success',
+                    timer: 2000,
+                    showConfirmButton: false,
+                    customClass: { popup: 'rounded-[3rem]' }
+                }).then(() => {
+                    window.location.href = '/orders/my-orders';
+                });
             } else {
-                Swal.fire('Error', data.message || "Failed to place order.", 'error');
+                Swal.fire('Checkout Failed', data.message || "Something went wrong.", 'error');
                 btn.disabled = false;
-                btn.innerText = "Place Order";
+                btn.innerHTML = originalText;
             }
         } catch (err) {
-            console.error("Checkout error:", err);
+            Swal.fire('Error', "Server communication failed.", 'error');
             btn.disabled = false;
-            btn.innerText = "Place Order";
+            btn.innerHTML = originalText;
         }
     }
     </script>

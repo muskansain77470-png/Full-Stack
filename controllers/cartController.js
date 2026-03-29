@@ -1,52 +1,61 @@
-const Cart = require("../models/cart");
+const Cart = require("../models/Cart");
 const Product = require("../models/Product");
 const Order = require("../models/Order");
 const mongoose = require("mongoose");
 
 /**
- * Helper: Yeh function cart ke har item ki quantity ka SUM nikalta hai.
+ * Helper: Cart ke total items ka count nikalne ke liye
  */
 const calculateCartCount = (cart) => {
-    if (!cart || !cart.items || !Array.isArray(cart.items) || cart.items.length === 0) {
-        return 0;
-    }
-    return cart.items.reduce((acc, item) => {
-        const qty = parseInt(item.quantity) || 0;
-        return acc + qty;
-    }, 0); 
+    if (!cart || !cart.items || !Array.isArray(cart.items)) return 0;
+    return cart.items.reduce((acc, item) => acc + (parseInt(item.quantity) || 0), 0);
 };
 
-// 1. Render Cart Page with PAGINATION
+// 1. Render Cart Page (Fixed Pagination & Null Checks)
 exports.getCartPage = async (req, res) => {
     try {
         const userId = req.user._id || req.user.id;
-        
-        // Pagination Logic
-        const page = parseInt(req.query.page) || 1;
-        const limit = 5; // Kitne unique items ek page par dikhane hain
+        const page = Math.max(1, parseInt(req.query.page) || 1);
+        const limit = 5;
         const skip = (page - 1) * limit;
 
-        // Fetch the full cart to calculate total items and count
+        // Cart fetch karein aur products ko populate karein
         const fullCart = await Cart.findOne({ userId }).populate('items.productId');
         
-        if (!fullCart || fullCart.items.length === 0) {
+        // Agar cart nahi hai ya items empty hain
+        if (!fullCart || !fullCart.items || fullCart.items.length === 0) {
             return res.render("cart", { 
                 user: req.user, 
                 cart: { items: [] },
                 cartCount: 0,
                 totalPages: 0,
                 currentPage: page,
-                title: "Shopping Bag | Full Stack Cafe"
+                title: "Shopping Bag | FullStack Cafe"
             });
         }
 
-        // Manually slice items for pagination since items are an array inside the document
-        const paginatedItems = fullCart.items.slice(skip, skip + limit);
-        const totalPages = Math.ceil(fullCart.items.length / limit);
+        // Filter: Sirf wo items rakhein jinka product database mein exist karta hai
+        const validItems = fullCart.items.filter(item => item.productId !== null);
+
+        // Agar filtering ke baad items empty ho jayein
+        if (validItems.length === 0) {
+            return res.render("cart", { 
+                user: req.user, 
+                cart: { items: [] },
+                cartCount: 0,
+                totalPages: 0,
+                currentPage: page,
+                title: "Shopping Bag | FullStack Cafe"
+            });
+        }
+
+        // Pagination slicing
+        const paginatedItems = validItems.slice(skip, skip + limit);
+        const totalPages = Math.ceil(validItems.length / limit);
 
         res.render("cart", { 
             user: req.user, 
-            cart: { items: paginatedItems }, // Sirf current page ke items bhej rahe hain
+            cart: { items: paginatedItems }, 
             cartCount: calculateCartCount(fullCart),
             currentPage: page,
             totalPages: totalPages,
@@ -54,11 +63,11 @@ exports.getCartPage = async (req, res) => {
             hasPreviousPage: page > 1,
             nextPage: page + 1,
             previousPage: page - 1,
-            title: "Shopping Bag | Full Stack Cafe"
+            title: "Shopping Bag | FullStack Cafe"
         });
     } catch (err) {
         console.error("Cart Page Error:", err);
-        res.status(500).send("Error loading cart");
+        res.status(500).render("404", { title: "Error Loading Cart", user: req.user });
     }
 };
 
@@ -68,9 +77,7 @@ exports.addToCart = async (req, res) => {
         const { productId } = req.body;
         const userId = req.user._id || req.user.id;
 
-        if (!userId) {
-            return res.status(401).json({ success: false, message: "Please login again." });
-        }
+        if (!productId) return res.status(400).json({ success: false, message: "Product ID missing" });
 
         const product = await Product.findById(productId);
         if (!product || product.stock <= 0) {
@@ -86,7 +93,7 @@ exports.addToCart = async (req, res) => {
             
             if (itemIndex > -1) { 
                 if (cart.items[itemIndex].quantity + 1 > product.stock) {
-                    return res.status(400).json({ success: false, message: "Limit reached based on available stock." });
+                    return res.status(400).json({ success: false, message: "Maximum stock reached." });
                 }
                 cart.items[itemIndex].quantity += 1; 
             } else { 
@@ -97,8 +104,8 @@ exports.addToCart = async (req, res) => {
         await cart.save();
         res.json({ success: true, cartCount: calculateCartCount(cart), message: "Added to bag!" });
     } catch (err) {
-        console.error("Add to Cart Error:", err.message);
-        res.status(500).json({ success: false, message: "Database error", cartCount: 0 });
+        console.error("Add to Cart Error:", err);
+        res.status(500).json({ success: false, message: "Server Error", cartCount: 0 });
     }
 };
 
@@ -108,40 +115,42 @@ exports.updateQuantity = async (req, res) => {
         const { productId, change } = req.body; 
         const userId = req.user._id || req.user.id;
         
-        if (!userId) return res.status(401).json({ success: false, message: "Unauthorized" });
-
-        let cart = await Cart.findOne({ userId }).populate('items.productId');
-        if (!cart) return res.status(404).json({ success: false, cartCount: 0 });
+        const cart = await Cart.findOne({ userId }).populate('items.productId');
+        if (!cart) return res.status(404).json({ success: false, message: "Cart not found" });
 
         const itemIndex = cart.items.findIndex(i => i.productId && i.productId._id.toString() === productId.toString());
 
         if (itemIndex > -1) {
             const product = cart.items[itemIndex].productId;
-            const currentQty = cart.items[itemIndex].quantity;
-            const newQty = currentQty + change;
-
-            if (change > 0 && newQty > product.stock) {
-                return res.status(400).json({ 
-                    success: false, 
-                    message: `Only ${product.stock} items available.` 
-                });
-            }
-
-            if (newQty > 0) {
-                cart.items[itemIndex].quantity = newQty;
+            if (!product) {
+                 cart.items.splice(itemIndex, 1);
             } else {
-                cart.items.splice(itemIndex, 1);
+                const newQty = cart.items[itemIndex].quantity + change;
+
+                if (change > 0 && newQty > product.stock) {
+                    return res.status(400).json({ 
+                        success: false, 
+                        message: `Only ${product.stock} units available.` 
+                    });
+                }
+
+                if (newQty > 0) {
+                    cart.items[itemIndex].quantity = newQty;
+                } else {
+                    cart.items.splice(itemIndex, 1);
+                }
             }
             await cart.save();
         }
 
         res.json({ 
             success: true, 
-            cartCount: calculateCartCount(cart)
+            cartCount: calculateCartCount(cart),
+            message: "Quantity updated"
         });
     } catch (err) {
-        console.error("Update Qty Error:", err.message);
-        res.status(500).json({ success: false, message: "Database error" });
+        console.error("Update Qty Error:", err);
+        res.status(500).json({ success: false, message: "Server Error" });
     }
 };
 
@@ -157,16 +166,16 @@ exports.removeItem = async (req, res) => {
             { new: true }
         );
         
-        res.json({ success: true, cartCount: calculateCartCount(cart) });
+        res.json({ success: true, cartCount: calculateCartCount(cart), message: "Item removed" });
     } catch (err) {
-        res.status(500).json({ success: false, cartCount: 0 });
+        res.status(500).json({ success: false, message: "Remove failed" });
     }
 };
 
-// 5. Reorder Logic
+// 5. Reorder Logic (Past Order to Cart)
 exports.reorder = async (req, res) => {
     try {
-        const { orderId } = req.body;
+        const orderId = req.params.orderId || req.body.orderId;
         const userId = req.user._id || req.user.id;
 
         const pastOrder = await Order.findById(orderId).populate('items.productId');
@@ -178,21 +187,20 @@ exports.reorder = async (req, res) => {
             const product = item.productId;
             if (!product || product.stock <= 0) continue;
 
-            const itemIndex = cart.items.findIndex(i => i.productId.toString() === product._id.toString());
+            const itemIndex = cart.items.findIndex(i => i.productId && i.productId.toString() === product._id.toString());
             const requestedQty = item.quantity || 1;
             
             if (itemIndex > -1) {
-                const totalPossible = Math.min(cart.items[itemIndex].quantity + requestedQty, product.stock);
-                cart.items[itemIndex].quantity = totalPossible;
+                cart.items[itemIndex].quantity = Math.min(cart.items[itemIndex].quantity + requestedQty, product.stock);
             } else {
-                const totalPossible = Math.min(requestedQty, product.stock);
-                cart.items.push({ productId: product._id, quantity: totalPossible });
+                cart.items.push({ productId: product._id, quantity: Math.min(requestedQty, product.stock) });
             }
         }
 
         await cart.save();
-        res.json({ success: true, cartCount: calculateCartCount(cart), message: "Items restored!" });
+        res.json({ success: true, cartCount: calculateCartCount(cart), message: "Reordered successfully!" });
     } catch (err) {
-        res.status(500).json({ success: false, message: "Reorder failed", cartCount: 0 });
+        console.error("Reorder Error:", err);
+        res.status(500).json({ success: false, message: "Reorder failed" });
     }
 };
