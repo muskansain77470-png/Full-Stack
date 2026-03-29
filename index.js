@@ -39,7 +39,7 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.disable('x-powered-by'); 
 
-// Socket.io instance accessible in routes
+// Socket.io instance
 app.set("socketio", io);
 
 /**
@@ -54,21 +54,15 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
 /**
- * FIXED: Universal MongoStore Initialization
- * Handles both new (create()) and old (new MongoStore()) syntax
+ * FIXED: Clean Session Store Logic
+ * Removing duplicate 'const sessionStore' and incomplete if-else blocks.
  */
-const sessionStore = (typeof MongoStore.create === 'function') 
-    ? MongoStore.create({
-        mongoUrl: process.env.MONGO_URI,
-        collectionName: 'sessions',
-        ttl: 24 * 60 * 60,
-        autoRemove: 'native'
-    })
-    : new MongoStore({
-        mongoUrl: process.env.MONGO_URI,
-        collection: 'sessions',
-        ttl: 24 * 60 * 60
-    });
+const sessionStore = MongoStore.create({
+    mongoUrl: process.env.MONGO_URI,
+    collectionName: 'sessions',
+    ttl: 24 * 60 * 60, // 1 Day
+    autoRemove: 'native'
+});
 
 app.use(session({
     secret: process.env.SESSION_SECRET || 'cafe_secret_key',
