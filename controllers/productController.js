@@ -1,6 +1,10 @@
 const Product = require('../models/Product');
+const Cart = require('../models/Cart');
 
-// 1. Render the HTML page (EJS)
+/**
+ * 1. Render the HTML page (EJS)
+ * Sirf initial page structure load karta hai.
+ */
 exports.getProductsPage = async (req, res) => {
     try {
         res.render('products', { 
@@ -13,30 +17,37 @@ exports.getProductsPage = async (req, res) => {
     }
 };
 
-// 2. JSON API for the frontend fetch()
+/**
+ * 2. JSON API for Frontend Fetch (Filtering & Search)
+ */
 exports.getProductsAPI = async (req, res) => {
     try {
         let { category, search, availability, sort, page = 1, limit = 8 } = req.query;
         
         let query = {};
         
+        // Category Filter
         if (category && category !== 'all') {
             query.category = { $regex: new RegExp(`^${category}$`, 'i') };
         }
         
+        // Search Filter
         if (search) {
             query.name = { $regex: search, $options: 'i' }; 
         }
         
+        // Stock Availability Filter
         if (availability === 'inStock') {
             query.stock = { $gt: 0 };
         }
 
+        // Sorting Logic
         let sortQuery = { createdAt: -1 }; 
         if (sort === 'priceLow') sortQuery = { price: 1 };
         if (sort === 'priceHigh') sortQuery = { price: -1 };
         if (sort === 'latest') sortQuery = { createdAt: -1 };
 
+        // Pagination
         const pageNum = Math.max(1, parseInt(page));
         const limitNum = parseInt(limit);
         const skip = (pageNum - 1) * limitNum;
@@ -59,49 +70,77 @@ exports.getProductsAPI = async (req, res) => {
     }
 };
 
-// 3. FIXED: Add to Bag Logic
-// This function must match the route in your cartRoutes.js (e.g., /cart/add)
+/**
+ * 3. FIXED: Add to Bag Logic (Database Persistent)
+ * User login hai toh DB mein save karega, warna error dega.
+ */
 exports.addToCart = async (req, res) => {
     try {
+        // Validation: User logged in hona chahiye
+        if (!req.user) {
+            return res.status(401).json({ success: false, message: "Please login to add items!" });
+        }
+
         const { productId } = req.body;
+        const userId = req.user._id || req.user.id;
 
-        // 1. Check if product exists and is in stock
+        // 1. Check if product exists
         const product = await Product.findById(productId);
-        if (!product || product.stock <= 0) {
-            return res.status(400).json({ success: false, message: "Out of Stock!" });
+        if (!product) {
+            return res.status(404).json({ success: false, message: "Product not found!" });
         }
 
-        // 2. Initialize cart in session if empty
-        if (!req.session.cart) {
-            req.session.cart = [];
+        if (product.stock <= 0) {
+            return res.status(400).json({ success: false, message: "Item is Out of Stock!" });
         }
 
-        // 3. Update quantity if item exists, else push new
-        const itemIndex = req.session.cart.findIndex(item => item.productId === productId);
-        if (itemIndex > -1) {
-            req.session.cart[itemIndex].quantity += 1;
-        } else {
-            req.session.cart.push({
-                productId: productId,
-                name: product.name,
-                price: product.price,
-                image: product.image,
-                quantity: 1
+        // 2. Find User's Cart in Database
+        let cart = await Cart.findOne({ userId });
+
+        if (!cart) {
+            // Cart nahi hai toh naya banao
+            cart = new Cart({
+                userId,
+                items: [{ 
+                    productId, 
+                    quantity: 1, 
+                    price: product.price,
+                    name: product.name,
+                    image: product.image 
+                }]
             });
+        } else {
+            // Check if item already exists in cart
+            const itemIndex = cart.items.findIndex(p => p.productId.toString() === productId);
+
+            if (itemIndex > -1) {
+                // Item exists, quantity badhao
+                cart.items[itemIndex].quantity += 1;
+            } else {
+                // Naya item add karo
+                cart.items.push({ 
+                    productId, 
+                    quantity: 1, 
+                    price: product.price,
+                    name: product.name,
+                    image: product.image 
+                });
+            }
         }
 
-        // 4. Calculate total items for the navbar badge
-        const totalCartItems = req.session.cart.reduce((total, item) => total + item.quantity, 0);
+        await cart.save();
 
-        // 5. Return success (This triggers the Toast in product.ejs)
+        // 3. Total items count for Navbar badge
+        const totalCartItems = cart.items.reduce((total, item) => total + item.quantity, 0);
+
         res.json({
             success: true,
-            message: `${product.name} added to bag!`,
+            message: `${product.name} added to your bag!`,
             cartCount: totalCartItems
         });
 
     } catch (err) {
-        console.error("Add to Cart Error:", err);
-        res.status(500).json({ success: false, message: "Server error" });
+        console.error("Add to Cart Error:", err.message);
+        res.status(500).json({ success: false, message: "Internal server error" });
     }
 };

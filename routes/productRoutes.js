@@ -3,13 +3,33 @@ const router = express.Router();
 const productController = require("../controllers/productController");
 const extractUser = require('../middlewares/extractUser');
 
-// Apply extractUser so the "Add to Bag" button knows if the user is logged in
+/**
+ * MIDDLEWARE: extractUser
+ * This ensures that for every request in this router, 
+ * req.user is populated if a valid token exists.
+ * Useful for showing "Add to Bag" or "Admin Edit" buttons in products.ejs.
+ */
 router.use(extractUser);
 
-// PUBLIC: Renders the products.ejs page at /products
+/**
+ * @route   GET /products
+ * @desc    Renders the main products page (products.ejs)
+ * @access  Public
+ */
 router.get("/", productController.getProductsPage);
 
-// PUBLIC API: Used by fetch() in product.ejs to load/filter items
+/**
+ * @route   GET /products/api
+ * @desc    Returns products as JSON for AJAX filtering/searching
+ * @access  Public
+ */
 router.get("/api", productController.getProductsAPI);
+
+/**
+ * @route   GET /products/:id
+ * @desc    Renders individual product details (optional but recommended)
+ * @access  Public
+ */
+// router.get("/:id", productController.getProductById);
 
 module.exports = router;
