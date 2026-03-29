@@ -3,7 +3,7 @@ const express = require("express");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
 const session = require("express-session"); 
-const MongoStore = require("connect-mongo"); // Session store for production
+const MongoStore = require("connect-mongo"); // Fixed Import
 const path = require("path");
 const mongoose = require("mongoose");
 const connectDB = require("./config/db");
@@ -39,7 +39,7 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.disable('x-powered-by'); 
 
-// Socket.io instance accessible in routes
+// Socket.io instance
 app.set("socketio", io);
 
 /**
@@ -50,20 +50,22 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true })); 
 app.use(cookieParser()); 
 
-// Serving static files (Move up for performance)
+// Serving static files
 app.use(express.static(path.join(__dirname, "public")));
 
 /**
  * FIXED: Session with MongoStore
- * Isse Render par Memory Leak warning khatam ho jayegi.
+ * Handling 'MongoStore.create' properly for latest versions
  */
 app.use(session({
     secret: process.env.SESSION_SECRET || 'cafe_secret_key',
     resave: false,
     saveUninitialized: false, 
     store: MongoStore.create({
-        mongoUrl: process.env.MONGO_URI, // Aapka database URL
-        ttl: 24 * 60 * 60 // Session 1 din tak valid rahegi
+        mongoUrl: process.env.MONGO_URI, 
+        collectionName: 'sessions',
+        ttl: 24 * 60 * 60,
+        autoRemove: 'native' 
     }),
     cookie: { 
         secure: process.env.NODE_ENV === "production",
@@ -86,16 +88,15 @@ app.use(async (req, res, next) => {
     res.locals.email = req.query.email || "";
     res.locals.type = req.query.type || "signup";
 
-    // Skip cart logic for Admin, Unauthenticated, and Static/Auth paths
     const isAuthPath = ['/login', '/signup', '/logout', '/verify-otp'].includes(req.path);
 
     if (!isAuthPath && req.user && req.user.role !== 'admin') {
         try {
             const userId = req.user._id || req.user.id;
-            // Lean query for faster execution
+            // select('items') keeps the query lightweight
             const userCart = await Cart.findOne({ userId }).select('items').lean();
             if (userCart && userCart.items) {
-                res.locals.cartCount = userCart.items.reduce((total, item) => total + (item.quantity || 0), 0);
+                res.locals.cartCount = userCart.items.reduce((total, item) => total + (Number(item.quantity) || 0), 0);
             }
         } catch (err) { 
             console.error("Cart Middleware Error:", err.message);
@@ -131,7 +132,7 @@ app.use("/support", supportRoutes);
 app.use("/", authRoutes); 
 
 /**
- * 7. Error Handling (404 & 500)
+ * 7. Error Handling
  */
 app.use((req, res) => {
     const isApiRequest = req.xhr || (req.headers.accept && req.headers.accept.indexOf('json') > -1);
@@ -152,7 +153,7 @@ app.use((err, req, res, next) => {
     const isApiRequest = req.xhr || (req.headers.accept && req.headers.accept.indexOf('json') > -1);
 
     if (isApiRequest) {
-        return res.status(status).json({ success: false, message: err.message || "Internal Server Error" });
+        return res.status(status).json({ success: false, message: "Internal Server Error" });
     }
 
     res.status(status).render("404", { 
