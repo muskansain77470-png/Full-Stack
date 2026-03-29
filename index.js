@@ -39,7 +39,7 @@ app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.disable('x-powered-by'); 
 
-// Socket.io instance
+// Socket.io instance accessible in routes
 app.set("socketio", io);
 
 /**
@@ -54,19 +54,27 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, "public")));
 
 /**
- * FIXED: Session with MongoStore
- * Handling 'MongoStore.create' properly for latest versions
+ * FIXED: Universal MongoStore Initialization
+ * Handles both new (create()) and old (new MongoStore()) syntax
  */
+const sessionStore = (typeof MongoStore.create === 'function') 
+    ? MongoStore.create({
+        mongoUrl: process.env.MONGO_URI,
+        collectionName: 'sessions',
+        ttl: 24 * 60 * 60,
+        autoRemove: 'native'
+    })
+    : new MongoStore({
+        mongoUrl: process.env.MONGO_URI,
+        collection: 'sessions',
+        ttl: 24 * 60 * 60
+    });
+
 app.use(session({
     secret: process.env.SESSION_SECRET || 'cafe_secret_key',
     resave: false,
     saveUninitialized: false, 
-    store: MongoStore.create({
-        mongoUrl: process.env.MONGO_URI, 
-        collectionName: 'sessions',
-        ttl: 24 * 60 * 60,
-        autoRemove: 'native' 
-    }),
+    store: sessionStore,
     cookie: { 
         secure: process.env.NODE_ENV === "production",
         httpOnly: true,
@@ -93,7 +101,6 @@ app.use(async (req, res, next) => {
     if (!isAuthPath && req.user && req.user.role !== 'admin') {
         try {
             const userId = req.user._id || req.user.id;
-            // select('items') keeps the query lightweight
             const userCart = await Cart.findOne({ userId }).select('items').lean();
             if (userCart && userCart.items) {
                 res.locals.cartCount = userCart.items.reduce((total, item) => total + (Number(item.quantity) || 0), 0);
