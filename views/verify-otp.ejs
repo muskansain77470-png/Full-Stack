@@ -32,7 +32,7 @@
                     class="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-5 text-3xl tracking-[0.5em] text-center font-black focus:ring-4 focus:ring-slate-900/5 focus:border-slate-900 outline-none transition-all placeholder:text-slate-200">
             </div>
 
-            <button type="submit" id="submitBtn" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95">
+            <button type="submit" id="submitBtn" class="w-full bg-slate-900 text-white py-5 rounded-2xl font-bold hover:bg-slate-800 transition-all shadow-xl active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed">
                 <span id="btnText">Verify Account</span>
             </button>
         </form>
@@ -60,17 +60,18 @@
         const timerSpan = document.getElementById('timer');
         const timerText = document.getElementById('timer-text');
 
-        let timeLeft = 600; // 10 minutes (backend sync)
+        let timeLeft = 600; // 10 minutes
         let timerId;
 
-        // 1. Timer Function
+        // 1. Timer Function (Optimized)
         function startTimer() {
-            clearInterval(timerId);
+            clearInterval(timerId); // Clear any existing timer
             timerId = setInterval(() => {
                 if (timeLeft <= 0) {
                     clearInterval(timerId);
                     timerText.classList.add('hidden');
                     resendBtn.classList.remove('hidden');
+                    resendBtn.disabled = false; // Ensure it's clickable
                 } else {
                     const minutes = Math.floor(timeLeft / 60);
                     const seconds = timeLeft % 60;
@@ -80,7 +81,7 @@
             }, 1000);
         }
 
-        // Start timer on page load
+        // Page load par timer start karein
         startTimer();
 
         // 2. Handle Verification Submit
@@ -120,9 +121,14 @@
             }
         });
 
-        // 3. Resend OTP Fetch
+        // 3. Resend OTP Fetch (Fixed)
         resendBtn.addEventListener('click', async () => {
             const email = document.getElementById('email').value;
+
+            // UI Feedback: Button ko temporary disable karein
+            resendBtn.disabled = true;
+            resendBtn.innerText = "Sending...";
+            msgDiv.classList.add('hidden');
 
             try {
                 const response = await fetch('/resend-otp', {
@@ -134,19 +140,24 @@
                 const result = await response.json();
 
                 if (response.ok && result.success) {
-                    // Reset UI for new OTP
+                    // Success UI
+                    msgDiv.innerText = "New OTP Sent Successfully!";
+                    msgDiv.className = "mb-4 p-3 rounded-xl bg-green-50 text-green-600 text-xs font-bold uppercase block";
+                    
+                    // Reset Timer logic
                     timeLeft = 600; 
                     resendBtn.classList.add('hidden');
+                    resendBtn.innerText = "Resend New Code"; // Reset text
                     timerText.classList.remove('hidden');
                     startTimer();
-                    
-                    msgDiv.innerText = "New OTP Sent!";
-                    msgDiv.className = "mb-4 p-3 rounded-xl bg-green-50 text-green-600 text-xs font-bold uppercase block";
                 } else {
-                    throw new Error(result.message);
+                    throw new Error(result.message || "Failed to resend.");
                 }
             } catch (err) {
-                alert(err.message || "Failed to resend code.");
+                msgDiv.innerText = err.message;
+                msgDiv.className = "mb-4 p-3 rounded-xl bg-red-50 text-red-600 text-xs font-bold uppercase block";
+                resendBtn.disabled = false;
+                resendBtn.innerText = "Resend New Code";
             }
         });
 

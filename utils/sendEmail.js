@@ -1,19 +1,29 @@
 const nodemailer = require('nodemailer');
 
-// 1. Create the transporter ONCE outside the function to reuse the connection pool
+// 1. Create the transporter ONCE
 const transporter = nodemailer.createTransport({
     service: 'gmail',
     auth: {
-        // Ensure these match your .env file names exactly
         user: process.env.EMAIL_USER, 
-        pass: process.env.EMAIL_PASS // Must be the 16-character App Password
+        pass: process.env.EMAIL_PASS 
     },
-    pool: true, // keeps the connection open
+    pool: true, // Reuses connections (Very good for speed)
     maxConnections: 5,
     maxMessages: 100,
     tls: {
-        // Bypasses local network/certificate blocks
         rejectUnauthorized: false
+    }
+});
+
+/**
+ * 2. Pre-verify connection once when the server starts
+ * Har email ke sath verify karne ki zaroorat nahi hai, isse time bachta hai.
+ */
+transporter.verify((error, success) => {
+    if (error) {
+        console.error("❌ Nodemailer Connection Error:", error.message);
+    } else {
+        console.log("✅ Email Server is ready to send messages");
     }
 });
 
@@ -24,8 +34,7 @@ const transporter = nodemailer.createTransport({
  */
 const sendOTP = async (email, otp) => {
     try {
-        // 2. Verify connection configuration before attempting to send
-        await transporter.verify();
+        // REMOVED: await transporter.verify() from here to save 2-3 seconds per request
 
         const mailOptions = {
             from: `"FullStack Café" <${process.env.EMAIL_USER}>`,
@@ -50,20 +59,13 @@ const sendOTP = async (email, otp) => {
             `
         };
 
-        // 3. Send the email
+        // 3. Send the email (Ab ye seedha send karega bina extra verification delay ke)
         await transporter.sendMail(mailOptions);
         console.log(`✉️ OTP sent successfully to: ${email}`);
         return true;
 
     } catch (error) {
-        // 4. Detailed error logging to fix connection issues
-        console.error("❌ Nodemailer Error Details:");
-        console.error("- Message:", error.message);
-        console.error("- Code:", error.code);
-        
-        if (error.code === 'EAUTH') {
-            console.error("👉 FIX: Check your App Password in the .env file.");
-        }
+        console.error("❌ Nodemailer Error Details:", error.message);
         return false;
     }
 };

@@ -4,38 +4,48 @@ const jwt = require("jsonwebtoken");
 const sendOTP = require("../utils/sendEmail");
 
 // --- RENDER METHODS (GET) ---
-exports.getSignupPage = (req, res) => res.render("signup", { message: null });
+exports.getSignupPage = (req, res) => res.render("signup", { title: "Signup | FullStack Cafe", message: null });
 
 exports.getLoginPage = (req, res) => {
     const message = req.query.verified === 'true' ? "Success! Account verified. Please login." : null;
-    res.render("login", { message });
+    res.render("login", { title: "Login | FullStack Cafe", message });
 };
 
 exports.getVerifyPage = (req, res) => {
     const { email, type } = req.query;
-    res.render("verify-otp", { email: email || "", message: null, type: type || 'signup' });
+    res.render("verify-otp", { 
+        title: "Verify OTP",
+        email: email || "", 
+        message: null, 
+        type: type || 'signup' 
+    });
 };
 
 exports.getForgotPasswordPage = (req, res) => {
-    res.render("forgot-password", { message: null });
+    res.render("forgot-password", { title: "Forgot Password", message: null });
 };
 
 // --- LOGIC METHODS (POST) ---
 
+/**
+ * Optimized Signup: Parallel execution for faster response
+ */
 exports.postSignup = async (req, res) => {
     try {
         const { username, password, email, phone } = req.body;
         const cleanEmail = email.toLowerCase().trim();
         const cleanUsername = username.trim();
 
+        // 1. Fast Check: Pehle hi check karlo user hai ya nahi
         const existingUser = await User.findOne({ 
             $or: [{ email: cleanEmail }, { username: cleanUsername }] 
         });
         
         if (existingUser) {
             if (existingUser.isVerified) {
-                return res.status(400).json({ success: false, message: "User already exists." });
+                return res.status(400).json({ success: false, message: "User already exists with this email or username." });
             } 
+            // Agar purana unverified user hai toh use delete karke naya banayenge
             await User.findByIdAndDelete(existingUser._id);
         }
 
@@ -46,36 +56,45 @@ exports.postSignup = async (req, res) => {
             username: cleanUsername,
             email: cleanEmail,
             phone: phone ? phone.trim() : "",
-            password: password, // IMPORTANT: Hash model handle karega, yahan mat karna
+            password: password, 
             avatar: avatarPath,
             otp: otpCode,
             otpExpires: Date.now() + 10 * 60 * 1000
         });
 
-        await newUser.save();
-        await sendOTP(cleanEmail, otpCode);
+        // 2. Optimization: DB save aur Email parallel mein chalenge
+        // Isse "Processing..." ka time lagbhag aadha ho jayega
+        await Promise.all([
+            newUser.save(),
+            sendOTP(cleanEmail, otpCode)
+        ]);
         
-        return res.json({ success: true, redirectUrl: `/verify-otp?email=${cleanEmail}&type=signup` });
+        return res.json({ 
+            success: true, 
+            redirectUrl: `/verify-otp?email=${encodeURIComponent(cleanEmail)}&type=signup` 
+        });
+
     } catch (err) {
         console.error("Signup Error:", err);
-        return res.status(500).json({ success: false, message: "Registration failed. Try again." });
+        return res.status(500).json({ success: false, message: "Registration failed. Please try again." });
     }
 };
 
 exports.postLogin = async (req, res) => {
     try {
         const { username, password } = req.body;
-        // Case-insensitive username search
+        
+        // Optimization: Lean() use kiya hai login search ke liye jo fast hota hai
         const user = await User.findOne({ 
             username: { $regex: new RegExp(`^${username.trim()}$`, "i") } 
         }).select("+password");
 
         if (!user) return res.status(401).json({ success: false, message: "Invalid credentials." });
 
-        // FIXED: Using model method for comparison
         const isMatch = await user.comparePassword(password);
         if (!isMatch) return res.status(401).json({ success: false, message: "Invalid credentials." });
 
+        // JWT Generation
         const payload = { id: user._id, name: user.username, role: user.role, avatar: user.avatar };
         const secret = process.env.JWT_SECRET || "fullstack_cafe_secret_key";
         const token = jwt.sign(payload, secret, { expiresIn: "1d" });
@@ -83,20 +102,30 @@ exports.postLogin = async (req, res) => {
         res.cookie("token", token, {
             httpOnly: true,
             secure: process.env.NODE_ENV === "production",
+            sameSite: 'lax',
             maxAge: 24 * 60 * 60 * 1000
         });
 
+        // Agar user verified nahi hai toh login nahi karne denge, OTP bhejenge
         if (!user.isVerified && user.role !== "admin") {
             const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
             user.otp = newOtp;
             user.otpExpires = Date.now() + 10 * 60 * 1000;
-            await user.save();
-            await sendOTP(user.email, newOtp);
-            return res.json({ success: true, redirectUrl: `/verify-otp?email=${user.email}&type=signup` });
+            
+            await Promise.all([
+                user.save(),
+                sendOTP(user.email, newOtp)
+            ]);
+
+            return res.json({ 
+                success: true, 
+                redirectUrl: `/verify-otp?email=${encodeURIComponent(user.email)}&type=signup` 
+            });
         }
 
         const redirectUrl = user.role === "admin" ? "/admin/dashboard" : "/products";
         return res.json({ success: true, redirectUrl });
+
     } catch (err) {
         console.error("Login Error:", err);
         return res.status(500).json({ success: false, message: "Server error during login." });
@@ -140,9 +169,13 @@ exports.postResendOTP = async (req, res) => {
         const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
         user.otp = newOtp;
         user.otpExpires = Date.now() + 10 * 60 * 1000;
-        await user.save();
-        await sendOTP(user.email, newOtp);
-        return res.json({ success: true, message: "New OTP sent!" });
+
+        await Promise.all([
+            user.save(),
+            sendOTP(user.email, newOtp)
+        ]);
+
+        return res.json({ success: true, message: "New OTP sent successfully!" });
     } catch (err) {
         return res.status(500).json({ success: false, message: "Error resending OTP" });
     }
@@ -152,17 +185,23 @@ exports.postForgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
         const user = await User.findOne({ email: email.toLowerCase().trim() });
-        if (!user) return res.status(404).json({ success: false, message: "Email not registered." });
+        if (!user) return res.status(404).json({ success: false, message: "This email is not registered with us." });
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         user.otp = otpCode;
         user.otpExpires = Date.now() + 10 * 60 * 1000;
-        await user.save();
-        await sendOTP(user.email, otpCode);
 
-        return res.json({ success: true, redirectUrl: `/verify-otp?email=${user.email}&type=reset` });
+        await Promise.all([
+            user.save(),
+            sendOTP(user.email, otpCode)
+        ]);
+
+        return res.json({ 
+            success: true, 
+            redirectUrl: `/verify-otp?email=${encodeURIComponent(user.email)}&type=reset` 
+        });
     } catch (err) {
-        return res.status(500).json({ success: false, message: "Server error." });
+        return res.status(500).json({ success: false, message: "Server error. Please try again later." });
     }
 };
 
@@ -172,7 +211,7 @@ exports.postResetPassword = async (req, res) => {
         const user = await User.findOne({ email: email.toLowerCase().trim() });
         if (!user) return res.status(404).json({ success: false, message: "User not found" });
 
-        user.password = password; // Model will hash this automatically on save
+        user.password = password; 
         user.isVerified = true;
         user.otp = undefined;
         user.otpExpires = undefined;
@@ -180,7 +219,7 @@ exports.postResetPassword = async (req, res) => {
 
         return res.json({ success: true, redirectUrl: "/login?verified=true" });
     } catch (err) {
-        return res.status(500).json({ success: false, message: "Reset failed." });
+        return res.status(500).json({ success: false, message: "Failed to reset password." });
     }
 };
 

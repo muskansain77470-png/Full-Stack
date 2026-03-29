@@ -3,6 +3,7 @@ const express = require("express");
 const morgan = require("morgan");
 const cookieParser = require("cookie-parser");
 const session = require("express-session"); 
+const MongoStore = require("connect-mongo"); // Session store for production
 const path = require("path");
 const mongoose = require("mongoose");
 const connectDB = require("./config/db");
@@ -32,13 +33,13 @@ mongoose.set('strictPopulate', false);
 connectDB();
 
 /**
- * 2. View Engine Setup
+ * 2. View Engine & Security Setup
  */
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
 app.disable('x-powered-by'); 
 
-// Socket.io instance accessible in routes via req.app.get("socketio")
+// Socket.io instance accessible in routes
 app.set("socketio", io);
 
 /**
@@ -49,27 +50,35 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true })); 
 app.use(cookieParser()); 
 
+// Serving static files (Move up for performance)
+app.use(express.static(path.join(__dirname, "public")));
+
+/**
+ * FIXED: Session with MongoStore
+ * Isse Render par Memory Leak warning khatam ho jayegi.
+ */
 app.use(session({
     secret: process.env.SESSION_SECRET || 'cafe_secret_key',
     resave: false,
     saveUninitialized: false, 
+    store: MongoStore.create({
+        mongoUrl: process.env.MONGO_URI, // Aapka database URL
+        ttl: 24 * 60 * 60 // Session 1 din tak valid rahegi
+    }),
     cookie: { 
         secure: process.env.NODE_ENV === "production",
+        httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000 
     }
 }));
-
-// Serving static files from 'public' folder
-app.use(express.static(path.join(__dirname, "public")));
 
 // Extract User info from JWT
 app.use(extractUser);
 
 /**
- * 4. Global Variables & Cart Count Middleware
+ * 4. Global Variables & Optimized Cart Count Middleware
  */
 app.use(async (req, res, next) => {
-    // Default values for EJS templates
     res.locals.user = req.user || null;
     res.locals.cartCount = 0; 
     res.locals.path = req.path;
@@ -77,18 +86,16 @@ app.use(async (req, res, next) => {
     res.locals.email = req.query.email || "";
     res.locals.type = req.query.type || "signup";
 
-    // Optimization: Skip cart logic for static files and auth routes
-    const isStatic = /\.(jpg|jpeg|png|gif|css|js|ico|svg|woff2|map|webp|avif)$/i.test(req.path);
+    // Skip cart logic for Admin, Unauthenticated, and Static/Auth paths
     const isAuthPath = ['/login', '/signup', '/logout', '/verify-otp'].includes(req.path);
 
-    if (!isStatic && !isAuthPath && req.user && req.user.role !== 'admin') {
+    if (!isAuthPath && req.user && req.user.role !== 'admin') {
         try {
             const userId = req.user._id || req.user.id;
-            if (userId && mongoose.Types.ObjectId.isValid(userId)) {
-                const userCart = await Cart.findOne({ userId }).lean();
-                if (userCart && userCart.items) {
-                    res.locals.cartCount = userCart.items.reduce((total, item) => total + (Number(item.quantity) || 0), 0);
-                }
+            // Lean query for faster execution
+            const userCart = await Cart.findOne({ userId }).select('items').lean();
+            if (userCart && userCart.items) {
+                res.locals.cartCount = userCart.items.reduce((total, item) => total + (item.quantity || 0), 0);
             }
         } catch (err) { 
             console.error("Cart Middleware Error:", err.message);
@@ -124,16 +131,14 @@ app.use("/support", supportRoutes);
 app.use("/", authRoutes); 
 
 /**
- * 7. 404 Error Handling (FIXED: Handling JSON vs HTML)
+ * 7. Error Handling (404 & 500)
  */
 app.use((req, res) => {
-    const status = 404;
-    // Agar fetch request hai toh JSON bhejo
-    if (req.xhr || req.headers.accept.indexOf('json') > -1) {
-        return res.status(status).json({ success: false, message: "Route not found" });
+    const isApiRequest = req.xhr || (req.headers.accept && req.headers.accept.indexOf('json') > -1);
+    if (isApiRequest) {
+        return res.status(404).json({ success: false, message: "Route not found" });
     }
-    // Normal browser request ke liye render karo
-    res.status(status).render("404", { 
+    res.status(404).render("404", { 
         title: "404 - Not Found", 
         message: "The page you are looking for doesn't exist.",
         user: req.user || null,
@@ -141,44 +146,27 @@ app.use((req, res) => {
     });
 });
 
-/**
- * 8. Global 500 Error Handling (FIXED: Robust JSON response)
- */
 app.use((err, req, res, next) => {
-    console.error("CRITICAL ERROR:", err.stack);
+    console.error("CRITICAL ERROR:", err.message);
     const status = err.status || 500;
-
-    // JSON detection for Fetch/AJAX calls
-    const isApiRequest = req.xhr || (req.headers.accept && req.headers.accept.indexOf('json') > -1) || req.path.startsWith('/signup') || req.path.startsWith('/login');
+    const isApiRequest = req.xhr || (req.headers.accept && req.headers.accept.indexOf('json') > -1);
 
     if (isApiRequest) {
-        return res.status(status).json({ 
-            success: false, 
-            message: err.message || "Internal Server Error" 
-        });
+        return res.status(status).json({ success: false, message: err.message || "Internal Server Error" });
     }
 
-    try {
-        res.status(status).render("404", { 
-            title: status === 500 ? "Server Error" : "Not Found",
-            message: status === 500 ? "Our chefs are fixing the server!" : "Page not found.",
-            user: req.user || null,
-            cartCount: res.locals.cartCount || 0
-        });
-    } catch (renderError) {
-        res.status(500).send("Something went wrong. Please check back later.");
-    }
+    res.status(status).render("404", { 
+        title: status === 500 ? "Server Error" : "Not Found",
+        message: "Something went wrong. Our chefs are on it!",
+        user: req.user || null,
+        cartCount: res.locals.cartCount || 0
+    });
 });
 
 /**
- * 9. Server Initialization
+ * 8. Server Initialization
  */
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`🚀 FullStack Cafe is live at: http://localhost:${PORT}`);
-});
-
-process.on("unhandledRejection", (err) => {
-    console.error(`Unhandled Rejection: ${err.message}`);
-    server.close(() => process.exit(1));
 });
