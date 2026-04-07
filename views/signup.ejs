@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -16,36 +16,20 @@
 
         <div id="msgBox" class="hidden mb-4 p-3 rounded-lg text-center border text-sm"></div>
 
-        <form id="signupForm" class="space-y-5" enctype="multipart/form-data">
+        <form id="signupForm" class="space-y-5">
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">Full Name</label>
-            <input type="text" name="username" id="username" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:outline-none transition" placeholder="e.g. John Doe" required />
+            <input type="text" name="username" id="username" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:outline-none transition" placeholder="e.g. name" required />
           </div>
 
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">Email Address</label>
-            <input type="email" name="email" id="email" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:outline-none transition" placeholder="e.g. john@gmail.com" required />
+            <input type="email" name="email" id="email" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:outline-none transition" placeholder="e.g. name@gmail.com" required />
           </div>
           
           <div>
             <label class="block text-sm font-bold text-gray-700 mb-1">Password</label>
             <input type="password" name="password" id="password" class="w-full px-4 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-red-500 focus:outline-none transition" placeholder="Create a strong password" required />
-          </div>
-
-          <div>
-            <label class="block text-sm font-bold text-gray-700 mb-1">Profile Picture</label>
-            <div class="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-xl hover:border-red-400 transition cursor-pointer bg-gray-50 relative" onclick="document.getElementById('file-upload').click()">
-              <div class="space-y-1 text-center">
-                <svg class="mx-auto h-10 w-10 text-gray-400" id="upload-icon" stroke="currentColor" fill="none" viewBox="0 0 48 48">
-                  <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
-                </svg>
-                <div class="flex text-sm text-gray-600 justify-center">
-                  <span id="file-label" class="text-red-600 font-medium">Upload a file</span>
-                  <input id="file-upload" name="avatar" type="file" class="hidden" accept="image/*" onchange="updateFileName()" />
-                </div>
-                <p class="text-xs text-gray-500">PNG, JPG up to 5MB</p>
-              </div>
-            </div>
           </div>
 
           <button type="submit" id="submitBtn" class="w-full bg-red-500 text-white py-3 rounded-xl font-bold text-lg hover:bg-red-600 shadow-lg transition duration-200 transform active:scale-[0.98]">
@@ -62,14 +46,13 @@
     <%- include('partials/footer') %>
 
     <script>
-      function updateFileName() {
-        const input = document.getElementById('file-upload');
-        const label = document.getElementById('file-label');
-        if (input.files && input.files[0]) {
-          label.innerText = "Selected: " + input.files[0].name;
-          label.classList.remove('text-red-600');
-          label.classList.add('text-green-600');
-        }
+      function displayMessage(msg, isError = true) {
+        const msgBox = document.getElementById('msgBox');
+        msgBox.innerText = msg;
+        msgBox.className = isError 
+          ? "mb-4 p-3 rounded-lg text-center border bg-red-50 text-red-600 border-red-200" 
+          : "mb-4 p-3 rounded-lg text-center border bg-green-50 text-green-600 border-green-200";
+        msgBox.classList.remove('hidden');
       }
 
       document.getElementById('signupForm').addEventListener('submit', async (e) => {
@@ -81,12 +64,17 @@
         btn.disabled = true;
         btn.innerText = "Processing...";
 
+        // Converting form data to a regular JSON object since we are no longer uploading files
         const formData = new FormData(e.target);
+        const data = Object.fromEntries(formData.entries());
 
         try {
           const response = await fetch('/signup', {
             method: 'POST',
-            body: formData
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(data)
           });
 
           const result = await response.json();
@@ -94,20 +82,14 @@
           if (result.success) {
             window.location.href = result.redirectUrl;
           } else {
-            showError(result.message || "Registration failed.");
+            displayMessage(result.message || "Registration failed.");
           }
         } catch (err) {
           console.error("Fetch Error:", err);
-          showError("Connection lost. Check your internet.");
+          displayMessage("Connection lost. Check your internet.");
         } finally {
           btn.disabled = false;
           btn.innerText = "Create Account";
-        }
-
-        function showError(msg) {
-          msgBox.innerText = msg;
-          msgBox.className = "mb-4 p-3 rounded-lg text-center border bg-red-50 text-red-600 border-red-200";
-          msgBox.classList.remove('hidden');
         }
       });
     </script>

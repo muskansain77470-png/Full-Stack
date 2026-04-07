@@ -1,23 +1,36 @@
 const mongoose = require("mongoose");
 
 const connectDB = async () => {
-    // Ensure you use the exact variable name from your .env file
     const uri = process.env.MONGO_URI || process.env.MONGODB_URI;
 
-    console.log("Attempting to connect with URI:", uri ? "URI Found (Hidden for security)" : "URI NOT FOUND"); 
-
     if (!uri) {
-        console.error("❌ Error: MongoDB URI is missing in .env file!");
-        process.exit(1); // Stop the server if DB cannot connect
+        console.error("❌ Error: MongoDB URI is missing!");
+        process.exit(1);
     }
 
     try {
-        // Simple connection for Mongoose 6+ (options like useNewUrlParser are default)
-        await mongoose.connect(uri);
+        // Timeout ko 5s se badha kar 15s kar rahe hain slow internet ke liye
+        const options = {
+            serverSelectionTimeoutMS: 15000, 
+            socketTimeoutMS: 45000,
+            family: 4 
+        };
+
+        // Important: Buffering ko tabhi false karein jab connection confirm ho jaye
+        console.log("⏳ Connecting to MongoDB...");
+        await mongoose.connect(uri, options);
+        
+        // Connection ke BAAD buffering disable karein taaki errors na aayein
+        mongoose.set('bufferCommands', false);
+        
         console.log("✅ MongoDB Connected Successfully");
     } catch (err) {
-        console.error("❌ MongoDB Connection Failed:", err.message);
-        // Important: Log the actual error to see if it's a whitelist/password issue
+        console.error("❌ MongoDB Connection Failed!");
+        console.error("Reason:", err.message);
+        
+        if (err.message.includes('ETIMEDOUT') || err.message.includes('selection timed out')) {
+            console.log("👉 FIX: Please go to MongoDB Atlas -> Network Access -> Add IP 0.0.0.0/0");
+        }
         process.exit(1); 
     }
 };

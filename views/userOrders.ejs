@@ -7,9 +7,16 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="/socket.io/socket.io.js"></script>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700;900&display=swap');
         body { font-family: 'Inter', sans-serif; }
+        .status-Pending { background-color: #fff7ed; color: #c2410c; }
+        .status-Preparing { background-color: #f0f9ff; color: #0369a1; }
+        .status-Ready { background-color: #f5f3ff; color: #6d28d9; }
+        .status-Delivered { background-color: #f0fdf4; color: #15803d; }
+        .status-Cancelled { background-color: #fef2f2; color: #b91c1c; }
+        .step-node { transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
 <body class="bg-[#f8fafc] text-gray-900 font-sans antialiased">
@@ -23,7 +30,7 @@
                 <h1 class="text-6xl font-black tracking-tighter text-slate-900 italic uppercase">
                     My <span class="text-orange-500 not-italic">Orders</span>
                 </h1>
-                <p class="text-slate-400 font-medium mt-2">Track your caffeine and snacks history.</p>
+                <p class="text-slate-400 font-medium mt-2">Track your caffeine and snacks history in real-time.</p>
             </div>
             <a href="/products" class="inline-flex items-center gap-2 bg-white border-2 border-slate-100 px-6 py-3 rounded-2xl text-sm font-black uppercase tracking-widest text-slate-600 hover:text-orange-600 hover:border-orange-100 transition-all shadow-sm">
                 <i class="fas fa-plus text-xs"></i> New Order
@@ -31,9 +38,9 @@
         </div>
 
         <% if (orders && orders.length > 0) { %>
-            <div class="space-y-10">
+            <div class="space-y-10" id="orders-list">
                 <% orders.forEach(order => { %>
-                    <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 overflow-hidden group transition-all hover:-translate-y-1">
+                    <div class="bg-white rounded-[2.5rem] shadow-xl shadow-slate-200/50 border border-slate-50 overflow-hidden group transition-all hover:-translate-y-1 order-container" data-id="<%= order._id %>">
                         
                         <div class="bg-slate-50/50 px-8 py-5 border-b border-slate-100 flex flex-wrap justify-between items-center gap-4">
                             <div class="flex items-center gap-4">
@@ -74,20 +81,22 @@
                                 <div class="bg-slate-50 rounded-[2rem] p-8 border border-slate-100 text-center md:text-right">
                                     <p class="text-[10px] font-bold text-slate-400 uppercase tracking-[0.3em] mb-2">Total Amount</p>
                                     <p class="text-5xl font-black text-slate-900 tracking-tighter mb-4">₹<%= order.totalAmount %></p>
-                                    <span class="inline-block px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm <%= order.statusClass %>">
-                                        <i class="fas fa-circle text-[6px] mr-2 opacity-50"></i><%= order.status %>
+                                    
+                                    <span id="status-badge-<%= order._id %>" class="inline-block px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm status-<%= order.status %>">
+                                        <i class="fas fa-circle text-[6px] mr-2 opacity-50"></i>
+                                        <span id="status-text-<%= order._id %>"><%= order.status %></span>
                                     </span>
                                 </div>
                             </div>
 
-                            <% if (order.status !== 'Cancelled') { %>
-                            <div class="mt-12 px-2">
+                            <div class="mt-12 px-2 <%= order.status === 'Cancelled' ? 'hidden' : '' %>" id="tracking-container-<%= order._id %>">
                                 <% 
                                     const statusMap = { 'Pending': 10, 'Preparing': 40, 'Ready': 75, 'Delivered': 100 };
                                     const progressWidth = statusMap[order.status] || 0;
                                 %>
                                 <div class="relative h-3 bg-slate-100 rounded-full overflow-hidden mb-6 border border-slate-50">
-                                    <div class="absolute h-full bg-orange-500 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(249,115,22,0.4)]" 
+                                    <div id="progress-bar-<%= order._id %>" 
+                                         class="absolute h-full bg-orange-500 transition-all duration-1000 ease-out rounded-full shadow-[0_0_15px_rgba(249,115,22,0.4)]" 
                                          style="width: <%= progressWidth %>%">
                                     </div>
                                 </div>
@@ -103,31 +112,31 @@
                                         const isCurrent = order.status === step.key;
                                     %>
                                         <div class="flex flex-col items-center w-1/4">
-                                            <div class="w-10 h-10 rounded-2xl flex items-center justify-center text-xs transition-all duration-500 <%= isDone ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-white text-slate-300 border border-slate-100' %> <%= isCurrent ? 'ring-4 ring-orange-100 scale-110' : '' %>">
+                                            <div id="step-<%= order._id %>-<%= step.key %>" 
+                                                 class="step-node w-10 h-10 rounded-2xl flex items-center justify-center text-xs 
+                                                 <%= isDone ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-white text-slate-300 border border-slate-100' %> 
+                                                 <%= isCurrent ? 'ring-4 ring-orange-100 scale-110' : '' %>">
                                                 <i class="fas <%= step.icon %>"></i>
                                             </div>
-                                            <span class="text-[9px] font-black uppercase mt-3 tracking-tighter <%= isDone ? 'text-slate-800' : 'text-slate-300' %> text-center">
+                                            <span class="step-label text-[9px] font-black uppercase mt-3 tracking-tighter <%= isDone ? 'text-slate-800' : 'text-slate-300' %> text-center">
                                                 <%= step.label %>
                                             </span>
                                         </div>
                                     <% }) %>
                                 </div>
                             </div>
-                            <% } %>
                         </div>
 
                         <div class="px-8 py-6 bg-slate-50/30 border-t border-slate-50 flex flex-wrap justify-end gap-4">
                             <% if (order.status === 'Pending') { %>
-                                <button onclick="cancelOrder(this, '<%= order._id %>')" 
+                                <button id="cancel-btn-<%= order._id %>" onclick="cancelOrder(this, '<%= order._id %>')" 
                                         class="px-8 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest text-red-500 bg-white border border-red-50 hover:bg-red-500 hover:text-white transition-all shadow-sm">
                                     Cancel Order
                                 </button>
                             <% } %>
-                            
                             <button onclick="reorderItems(this, '<%= order._id %>')" 
                                     class="px-10 py-3 rounded-2xl text-[10px] font-black uppercase tracking-widest bg-slate-900 text-white hover:bg-orange-600 transition-all shadow-lg flex items-center gap-3">
-                                <i class="fas fa-redo-alt text-[10px]"></i>
-                                Reorder
+                                <i class="fas fa-redo-alt text-[10px]"></i> Reorder
                             </button>
                         </div>
                     </div>
@@ -151,29 +160,67 @@
                     <% } %>
                 </div>
             </div>
-
         <% } else { %>
-            <div class="text-center py-32 bg-white rounded-[4rem] border-4 border-dashed border-slate-100 shadow-inner">
+            <div class="text-center py-32 bg-white rounded-[4rem] border-4 border-dashed border-slate-100">
                 <div class="text-9xl mb-10 opacity-20 grayscale">📄</div>
-                <h2 class="text-4xl font-black text-slate-800 tracking-tight uppercase italic">No History Found</h2>
-                <p class="text-slate-400 mt-4 mb-12 font-medium text-lg max-w-xs mx-auto">You haven't ordered anything yet. Let's change that!</p>
-                <a href="/products" class="px-14 py-5 bg-slate-900 text-white font-black rounded-3xl hover:shadow-xl hover:-translate-y-2 transition-all inline-block uppercase tracking-[0.2em] text-xs">
-                    Start Ordering
-                </a>
+                <h2 class="text-4xl font-black text-slate-800 tracking-tight uppercase italic">No Orders Yet</h2>
+                <a href="/products" class="mt-8 px-14 py-5 bg-slate-900 text-white font-black rounded-3xl hover:shadow-xl transition-all inline-block uppercase tracking-[0.2em] text-xs">Start Ordering</a>
             </div>
         <% } %>
     </main>
 
     <%- include('./partials/footer') %> 
-    
+
     <script>
+        //const socket = io();
+
+        // 1. Join Private Room for each order to ensure updates are received
+        document.querySelectorAll('.order-container').forEach(container => {
+            const orderId = container.getAttribute('data-id');
+            socket.emit('join', `order_${orderId}`);
+        });
+
+        // 2. Listen for Status Changes
+        socket.on('orderStatusChanged', (data) => {
+            console.log("Status Update Received:", data);
+            const { orderId, status } = data;
+            const statusMap = { 'Pending': 10, 'Preparing': 40, 'Ready': 75, 'Delivered': 100 };
+            
+            const badge = document.getElementById(`status-badge-${orderId}`);
+            const text = document.getElementById(`status-text-${orderId}`);
+            const bar = document.getElementById(`progress-bar-${orderId}`);
+            const cancelBtn = document.getElementById(`cancel-btn-${orderId}`);
+
+            if (text) text.innerText = status;
+            if (badge) {
+                badge.className = `inline-block px-5 py-2 rounded-full text-[10px] font-black uppercase tracking-widest shadow-sm status-${status}`;
+            }
+            if (bar) bar.style.width = statusMap[status] + '%';
+
+            // Update Steps Icons
+            const steps = ['Pending', 'Preparing', 'Ready', 'Delivered'];
+            steps.forEach(stepKey => {
+                const node = document.getElementById(`step-${orderId}-${stepKey}`);
+                if (node) {
+                    const isDone = statusMap[status] >= statusMap[stepKey];
+                    const isCurrent = status === stepKey;
+                    
+                    node.className = `step-node w-10 h-10 rounded-2xl flex items-center justify-center text-xs transition-all duration-500 ${isDone ? 'bg-orange-500 text-white shadow-lg shadow-orange-200' : 'bg-white text-slate-300 border border-slate-100'} ${isCurrent ? 'ring-4 ring-orange-100 scale-110' : ''}`;
+                }
+            });
+
+            if (status !== 'Pending' && cancelBtn) cancelBtn.classList.add('hidden');
+            if (status === 'Cancelled') document.getElementById(`tracking-container-${orderId}`)?.classList.add('hidden');
+
+            showToast(`Order Status: ${status}`);
+        });
+
+        // Toast Helper
         function showToast(msg, isError = false) {
             const container = document.getElementById('notification-container');
-            if(!container) return;
             const toast = document.createElement('div');
-            toast.className = `${isError ? 'bg-red-500' : 'bg-slate-900'} text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 transform transition-all duration-500 translate-x-full opacity-0`;
-            toast.innerHTML = `<i class="fas ${isError ? 'fa-bolt' : 'fa-check'} text-xs"></i><span class="text-xs font-black uppercase tracking-widest">${msg}</span>`;
-            
+            toast.className = `${isError ? 'bg-red-600' : 'bg-slate-900'} text-white px-8 py-4 rounded-2xl shadow-2xl flex items-center gap-4 transform transition-all duration-500 translate-x-full opacity-0`;
+            toast.innerHTML = `<i class="fas ${isError ? 'fa-exclamation-triangle' : 'fa-bell'} text-xs"></i><span class="text-xs font-black uppercase tracking-widest">${msg}</span>`;
             container.appendChild(toast);
             setTimeout(() => toast.classList.remove('translate-x-full', 'opacity-0'), 10);
             setTimeout(() => {
@@ -182,78 +229,52 @@
             }, 4000);
         }
 
-        async function cancelOrder(btnElement, orderId) {
+        // Cancel Logic
+        async function cancelOrder(btn, orderId) {
             const result = await Swal.fire({
-                title: 'CANCEL ORDER?',
-                text: "Stock will be restored to menu.",
+                title: 'Are you sure?',
+                text: "Order will be cancelled and stock returned.",
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#ef4444',
-                cancelButtonColor: '#1e293b',
-                confirmButtonText: 'YES, CANCEL IT',
-                customClass: { popup: 'rounded-[2rem]' }
+                confirmButtonText: 'Yes, Cancel'
             });
 
             if (result.isConfirmed) {
-                const originalText = btnElement.innerHTML;
-                btnElement.disabled = true;
-                btnElement.innerHTML = 'Processing...';
-
+                btn.disabled = true;
                 try {
-                    const response = await fetch(`/orders/cancel/${orderId}`, { 
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json'
-                        }
-                    });
-                    
-                    const data = await response.json();
-                    
+                    const res = await fetch(`/orders/cancel/${orderId}`, { method: 'POST' });
+                    const data = await res.json();
                     if (data.success) {
-                        showToast("Order Cancelled Successfully");
+                        showToast("Order Cancelled");
                         setTimeout(() => location.reload(), 1000);
                     } else {
-                        showToast(data.message || "Could not cancel order", true);
-                        btnElement.disabled = false;
-                        btnElement.innerHTML = originalText;
+                        showToast(data.message, true);
+                        btn.disabled = false;
                     }
-                } catch (err) {
-                    console.error("Cancel Error:", err);
-                    showToast("Server Connection Failed", true);
-                    btnElement.disabled = false;
-                    btnElement.innerHTML = originalText;
+                } catch (e) { 
+                    showToast("Network Error", true);
+                    btn.disabled = false;
                 }
             }
         }
 
-        async function reorderItems(btnElement, orderId) {
-            if(btnElement.disabled) return;
-            
-            btnElement.disabled = true;
-            const originalContent = btnElement.innerHTML;
-            btnElement.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
-
+        // Reorder Logic
+        async function reorderItems(btn, orderId) {
+            btn.disabled = true;
             try {
-                const response = await fetch(`/orders/reorder/${orderId}`, { 
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' }
-                });
-                const data = await response.json();
-                
+                const res = await fetch(`/orders/reorder/${orderId}`, { method: 'POST' });
+                const data = await res.json();
                 if (data.success) {
-                    showToast("Items added back to your bag!");
-                    setTimeout(() => window.location.href = '/cart', 1200);
+                    showToast("Added to cart!");
+                    setTimeout(() => window.location.href = '/cart', 1000);
                 } else {
-                    showToast(data.message || "Failed to reorder", true);
-                    btnElement.disabled = false;
-                    btnElement.innerHTML = originalContent;
+                    showToast(data.message, true);
+                    btn.disabled = false;
                 }
-            } catch (err) {
-                console.error("Reorder Error:", err);
-                showToast("Server unreachable", true);
-                btnElement.disabled = false;
-                btnElement.innerHTML = originalContent;
+            } catch (e) {
+                showToast("Network Error", true);
+                btn.disabled = false;
             }
         }
     </script>
