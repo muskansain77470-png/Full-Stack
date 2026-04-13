@@ -1,53 +1,53 @@
-require("dotenv").config();
-const nodemailer = require("nodemailer");
+const { google } = require('googleapis');
+const OAuth2 = google.auth.OAuth2;
 
-/* ================= TRANSPORT SETUP ================= */
-const transporter = nodemailer.createTransport({
-    service: "gmail", 
-    auth: {
-        user: process.env.EMAIL_USER,  
-        pass: process.env.EMAIL_PASS   // Ensure this is your 16-character App Password
-    }
-});
-
-/* ================= SEND OTP FUNCTION ================= */
-const sendOTP = async (email, otp) => {
+const sendMail = async ({ to, subject, html }) => {
     try {
-        const htmlContent = `
-            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: auto; border: 1px solid #eee; padding: 20px;">
-                <h2 style="color: #333; text-align: center;">FullStack Café Verification</h2>
-                <p>Hello,</p>
-                <p>Your One-Time Password (OTP) for account verification is:</p>
-                <div style="background: #f4f4f4; padding: 15px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 5px; color: #d9534f;">
-                    ${otp}
-                </div>
-                <p>This code is valid for 10 minutes. Please do not share this with anyone.</p>
-                <p>Regards,<br>Team FullStack Café</p>
-            </div>
-        `;
+        const oauth2Client = new OAuth2(
+            process.env.GMAIL_CLIENT_ID,
+            process.env.GMAIL_CLIENT_SECRET,
+            "https://developers.google.com/oauthplayground"
+        );
 
-        const info = await transporter.sendMail({
-            from: `"FullStack Cafe" <${process.env.EMAIL_USER}>`, 
-            to: email,
-            subject: "Your Verification Code - FullStack Cafe",
-            html: htmlContent
+        oauth2Client.setCredentials({
+            refresh_token: process.env.GMAIL_REFRESH_TOKEN
         });
-        
-        console.log("📨 OTP Sent successfully to:", email);
-        return info;
+
+        // Trigger the token refresh
+        const { token } = await oauth2Client.getAccessToken();
+
+        const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+
+        const message = [
+            `To: ${to}`,
+            `Subject: ${subject}`,
+            `Content-Type: text/html; charset=utf-8`,
+            `MIME-Version: 1.0`,
+            ``,
+            html
+        ].join('\n');
+
+        const encodedMail = Buffer.from(message)
+            .toString('base64')
+            .replace(/\+/g, '-')
+            .replace(/\//g, '_')
+            .replace(/=+$/, '');
+
+        await gmail.users.messages.send({
+            userId: 'me',
+            requestBody: { raw: encodedMail }
+        });
+
+        console.log("✅ New Gmail Client Authorized and Email Sent");
     } catch (err) {
-        console.error("❌ Nodemailer Error:", err.message);
+        console.error("❌ Gmail Error:", err.response ? err.response.data : err.message);
         throw err;
     }
 };
 
-// Verify connection on startup
-transporter.verify((error, success) => {
-    if (error) {
-        console.error("❌ Mail Server Error:", error.message);
-    } else {
-        console.log("✅ Mail Server is ready to send messages");
-    }
-});
+const sendOTP = async (email, otp) => {
+    const html = `<h2>Verify Your Account</h2><p>Your code is: <b>${otp}</b></p>`;
+    return await sendMail({ to: email, subject: "Verification Code", html });
+};
 
-module.exports = sendOTP;
+module.exports = { sendMail, sendOTP };

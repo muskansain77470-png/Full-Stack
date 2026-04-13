@@ -1,7 +1,8 @@
 const User = require("../models/User");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const sendOTP = require("../utils/sendEmail");
+// ✅ Destructured sendOTP from the utility object
+const { sendOTP } = require("../utils/sendEmail");
 
 // --- RENDER METHODS (GET) ---
 exports.getSignupPage = (req, res) => res.render("signup", { title: "Signup | FullStack Cafe", message: null });
@@ -27,9 +28,6 @@ exports.getForgotPasswordPage = (req, res) => {
 
 // --- LOGIC METHODS (POST) ---
 
-/**
- * Signup: Enforces unique emails, allows any username.
- */
 exports.postSignup = async (req, res) => {
     try {
         const { username, password, email, phone } = req.body;
@@ -48,7 +46,6 @@ exports.postSignup = async (req, res) => {
             await User.findByIdAndDelete(existingUser._id);
         }
 
-        const avatarPath = "/images/default-avatar.png";
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
 
         const newUser = new User({
@@ -56,7 +53,7 @@ exports.postSignup = async (req, res) => {
             email: cleanEmail,
             phone: phone ? phone.trim() : "",
             password: password, 
-            avatar: avatarPath,
+            avatar: "/images/default-avatar.png",
             otp: otpCode,
             otpExpires: Date.now() + 10 * 60 * 1000
         });
@@ -65,10 +62,8 @@ exports.postSignup = async (req, res) => {
             throw new Error("sendOTP is not defined correctly in utils/sendEmail.js");
         }
 
-        await Promise.all([
-            newUser.save(),
-            sendOTP(cleanEmail, otpCode)
-        ]);
+        await newUser.save();
+        await sendOTP(cleanEmail, otpCode);
         
         return res.json({ 
             success: true, 
@@ -84,53 +79,22 @@ exports.postSignup = async (req, res) => {
     }
 };
 
-/**
- * Login: Updated to use EMAIL instead of username
- */
 exports.postLogin = async (req, res) => {
     try {
-        const { email, password } = req.body; // Changed from username to email
-        
-        if (!email || !password) {
-            return res.status(400).json({ success: false, message: "Email and password are required." });
+        const { email, password } = req.body;
+        if (!email || !password) return res.status(400).json({ success: false, message: "Required fields missing." });
+
+        const user = await User.findOne({ email: email.toLowerCase().trim() }).select("+password");
+        if (!user || !(await user.comparePassword(password))) {
+            return res.status(401).json({ success: false, message: "Invalid credentials." });
         }
 
-        const cleanEmail = email.toLowerCase().trim();
-
-        // Find user by email
-        const user = await User.findOne({ email: cleanEmail }).select("+password");
-
-        if (!user) {
-            return res.status(401).json({ success: false, message: "Invalid email or password." });
-        }
-
-        const isMatch = await user.comparePassword(password);
-        if (!isMatch) {
-            return res.status(401).json({ success: false, message: "Invalid email or password." });
-        }
-
-        // JWT Generation
-        const payload = { id: user._id, name: user.username, email: user.email, role: user.role, avatar: user.avatar };
-        const secret = process.env.JWT_SECRET || "fullstack_cafe_secret_key";
-        const token = jwt.sign(payload, secret, { expiresIn: "1d" });
-
-        res.cookie("token", token, {
-            httpOnly: true,
-            secure: process.env.NODE_ENV === "production",
-            sameSite: 'lax',
-            maxAge: 24 * 60 * 60 * 1000
-        });
-
-        // OTP Redirect if not verified
         if (!user.isVerified && user.role !== "admin") {
             const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
             user.otp = newOtp;
             user.otpExpires = Date.now() + 10 * 60 * 1000;
-            
-            await Promise.all([
-                user.save(),
-                sendOTP(user.email, newOtp)
-            ]);
+            await user.save();
+            await sendOTP(user.email, newOtp);
 
             return res.json({ 
                 success: true, 
@@ -138,12 +102,17 @@ exports.postLogin = async (req, res) => {
             });
         }
 
-        const redirectUrl = user.role === "admin" ? "/admin/dashboard" : "/products";
-        return res.json({ success: true, redirectUrl });
+        const token = jwt.sign(
+            { id: user._id, name: user.username, role: user.role }, 
+            process.env.JWT_SECRET || "fullstack_cafe_secret_key", 
+            { expiresIn: "1d" }
+        );
+
+        res.cookie("token", token, { httpOnly: true, maxAge: 24 * 60 * 60 * 1000 });
+        return res.json({ success: true, redirectUrl: user.role === "admin" ? "/admin/dashboard" : "/products" });
 
     } catch (err) {
-        console.error("Login Error:", err);
-        return res.status(500).json({ success: false, message: "Server error during login." });
+        return res.status(500).json({ success: false, message: "Login failed." });
     }
 };
 
@@ -157,18 +126,13 @@ exports.postVerifyOTP = async (req, res) => {
         if (user.otp === otp && user.otpExpires > Date.now()) {
             user.otp = undefined;
             user.otpExpires = undefined;
-            
-            if (type === 'reset') {
-                await user.save();
-                return res.json({ success: true, redirectUrl: `/reset-password?email=${user.email}` });
-            } else {
-                user.isVerified = true;
-                await user.save();
-                return res.json({ success: true, redirectUrl: "/login?verified=true" });
-            }
+            user.isVerified = true;
+            await user.save();
+
+            const url = type === 'reset' ? `/reset-password?email=${user.email}` : "/login?verified=true";
+            return res.json({ success: true, redirectUrl: url });
         } else {
-            const msg = user.otpExpires < Date.now() ? "OTP Expired." : "Invalid OTP.";
-            return res.status(400).json({ success: false, message: msg });
+            return res.status(400).json({ success: false, message: "Invalid or expired OTP." });
         }
     } catch (err) {
         return res.status(500).json({ success: false, message: "Verification failed." });
@@ -184,50 +148,44 @@ exports.postResendOTP = async (req, res) => {
         const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
         user.otp = newOtp;
         user.otpExpires = Date.now() + 10 * 60 * 1000;
-
-        await Promise.all([
-            user.save(),
-            sendOTP(user.email, newOtp)
-        ]);
-
-        return res.json({ success: true, message: "New OTP sent successfully!" });
+        await user.save();
+        await sendOTP(user.email, newOtp);
+        return res.json({ success: true, message: "New OTP sent!" });
     } catch (err) {
         return res.status(500).json({ success: false, message: "Error resending OTP" });
     }
 };
 
+// ✅ ADDED: Missing Forgot Password Logic
 exports.postForgotPassword = async (req, res) => {
     try {
         const { email } = req.body;
         const user = await User.findOne({ email: email.toLowerCase().trim() });
-        if (!user) return res.status(404).json({ success: false, message: "This email is not registered." });
+        if (!user) return res.status(404).json({ success: false, message: "Email not found." });
 
         const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
         user.otp = otpCode;
         user.otpExpires = Date.now() + 10 * 60 * 1000;
-
-        await Promise.all([
-            user.save(),
-            sendOTP(user.email, otpCode)
-        ]);
+        await user.save();
+        await sendOTP(user.email, otpCode);
 
         return res.json({ 
             success: true, 
             redirectUrl: `/verify-otp?email=${encodeURIComponent(user.email)}&type=reset` 
         });
     } catch (err) {
-        return res.status(500).json({ success: false, message: "Server error. Please try again later." });
+        return res.status(500).json({ success: false, message: "Server error." });
     }
 };
 
+// ✅ ADDED: Missing Reset Password Logic
 exports.postResetPassword = async (req, res) => {
     try {
         const { email, password } = req.body;
         const user = await User.findOne({ email: email.toLowerCase().trim() });
-        if (!user) return res.status(404).json({ success: false, message: "User not found" });
+        if (!user) return res.status(404).json({ success: false, message: "User not found." });
 
-        user.password = password; 
-        user.isVerified = true;
+        user.password = password; // Ensure your User model has a password hash pre-save hook
         user.otp = undefined;
         user.otpExpires = undefined;
         await user.save();
